@@ -101,29 +101,53 @@ class YouTubeDownloader(BaseDownloader):
         
         try:
             ydl_opts = self._get_ydl_options()
-            ydl_opts["default_search"] = "ytsearch1"
+            ydl_opts["default_search"] = "ytsearch" # Ищем несколько результатов
             ydl_opts["noplaylist"] = False
-            ydl_opts["extract_flat"] = "in_playlist"
-            ydl_opts["playlistend"] = limit
+            ydl_opts["extract_flat"] = True # Более стандартный способ
             
-            info = await self._extract_info(f"{query} playlist", ydl_opts)
+            # Ищем плейлист, а не просто видео
+            info = await self._extract_info(f"\"{query}\" playlist", ydl_opts)
             
             entries = info.get('entries', []) if info else []
             if not entries:
                 logger.warning(f"Не найдено плейлистов для '{query}' на YouTube.")
                 return []
 
-            playlist = []
+            # Ищем первый плейлист в результатах
+            playlist_entry = None
             for entry in entries:
-                if not entry or entry.get("_type") != "url":
+                if entry and entry.get("ie_key") == "YoutubePlaylist":
+                    playlist_entry = entry
+                    break
+            
+            if not playlist_entry:
+                logger.warning(f"Не найдено плейлистов в результатах поиска для '{query}'.")
+                return []
+
+            # Теперь получаем треки из этого плейлиста
+            ydl_opts_playlist = self._get_ydl_options()
+            ydl_opts_playlist["noplaylist"] = False
+            ydl_opts_playlist["extract_flat"] = "in_playlist"
+            ydl_opts_playlist["playlistend"] = limit
+            
+            playlist_info = await self._extract_info(playlist_entry["url"], ydl_opts_playlist)
+            
+            playlist_entries = playlist_info.get('entries', []) if playlist_info else []
+            if not playlist_entries:
+                logger.warning(f"Плейлист '{playlist_entry['title']}' пуст.")
+                return []
+
+            playlist = []
+            for track_entry in playlist_entries:
+                if not track_entry:
                     continue
                 
                 track_info = TrackInfo(
-                    title=entry.get("title", "Unknown Title"),
+                    title=track_entry.get("title", "Unknown Title"),
                     artist="Unknown Artist",
-                    duration=int(entry.get("duration", 0)),
+                    duration=int(track_entry.get("duration", 0)),
                     source=Source.YOUTUBE.value,
-                    identifier=entry.get("id"),
+                    identifier=track_entry.get("id"),
                 )
                 playlist.append(track_info)
             
@@ -181,25 +205,21 @@ class YouTubeDownloader(BaseDownloader):
             
             video_id = video_info["id"]
             
-            # Use glob to find the actual downloaded file, which should be .mp3
-            downloaded_files = glob.glob(str(settings.DOWNLOADS_DIR / f"{video_id}.mp3"))
+            # Ждем немного, чтобы FFmpeg успел завершить конвертацию
+            await asyncio.sleep(2)
             
-            if not downloaded_files:
-                # If .mp3 not found, try finding any file with the video_id prefix
-                downloaded_files = glob.glob(str(settings.DOWNLOADS_DIR / f"{video_id}.*"))
-                if downloaded_files:
-                    logger.warning(f"Найден файл {downloaded_files[0]} но он не .mp3. Возможно, проблема с FFmpeg.")
-                else:
-                    return DownloadResult(success=False, error="Файл не был создан после загрузки.")
+            # Ищем .mp3 файл
+            expected_path = settings.DOWNLOADS_DIR / f"{video_id}.mp3"
             
-            actual_file_path = downloaded_files[0]
-            
-            # Ensure the file exists
-            if not os.path.exists(actual_file_path):
-                return DownloadResult(success=False, error="Файл не был создан после загрузки.")
-            
-            # Use actual_file_path for the result
-            expected_path = actual_file_path
+            if not expected_path.exists():
+                logger.error(f"Файл {expected_path} не был создан после скачивания и конвертации.")
+                
+                # Попробуем найти другие файлы, чтобы понять, что пошло не так
+                other_files = glob.glob(str(settings.DOWNLOADS_DIR / f"{video_id}.*"))
+                if other_files:
+                    logger.warning(f"Найдены другие файлы: {other_files}. Возможно, проблема с FFmpeg.")
+                
+                return DownloadResult(success=False, error="Ошибка конвертации в MP3.")
 
             track_info = TrackInfo(
                 title=video_info.get("title", "Unknown Title"),
