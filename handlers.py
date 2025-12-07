@@ -46,7 +46,6 @@ class BotHandlers:
         self.app = app
         self.state = BotState()
         self.youtube = YouTubeDownloader()
-        self.deezer = DeezerDownloader()
         self.radio = RadioService(self.state, app.bot, self.youtube)
 
     async def register(self):
@@ -77,7 +76,6 @@ class BotHandlers:
         """Очищает ресурсы при завершении работы бота."""
         try:
             await self.radio.stop()
-            await self.deezer.close_session()
             logger.info("✅ Ресурсы очищены.")
         except Exception as e:
             logger.error(f"⚠️ Ошибка при очистке ресурсов: {e}")
@@ -176,13 +174,8 @@ class BotHandlers:
 
         search_msg = await update.message.reply_text(f"🔍 Ищу трек: `{query_or_error}`...", parse_mode=ParseMode.MARKDOWN)
         
-        downloader = self.youtube if self.state.source != Source.DEEZER else self.deezer
-        result = await downloader.download_with_retry(query_or_error)
-        
-        # Если первый источник не справился, пробуем другой
-        if not result or not result.success:
-            logger.warning(f"Источник {downloader.name} не нашел '{query_or_error}'. Пробую YouTube.")
-            result = await self.youtube.download_with_retry(query_or_error)
+        # Всегда используем YouTube (Deezer убран)
+        result = await self.youtube.download_with_retry(query_or_error)
 
         if result and result.success:
             await self._send_audio(context, update.effective_chat.id, search_msg, result)
@@ -251,14 +244,18 @@ class BotHandlers:
         source_map = {
             'source_youtube': Source.YOUTUBE,
             'source_ytmusic': Source.YOUTUBE_MUSIC,
-            'source_deezer': Source.DEEZER,
         }
 
         if action == 'source_select':
             await query.edit_message_text("💿 Выберите источник для поиска:", reply_markup=get_source_keyboard())
         elif action in source_map:
             self.state.source = source_map[action]
-            await query.edit_message_text(f"✅ Источник изменен на: **{self.state.source.value}**", parse_mode=ParseMode.MARKDOWN)
+            status_text = await self._get_status_text()
+            await query.edit_message_text(
+                f"✅ Источник изменен на: **{self.state.source.value}**\n\n{status_text}",
+                reply_markup=get_main_keyboard(),
+                parse_mode=ParseMode.MARKDOWN
+            )
         
         elif action == 'menu_refresh':
             try:

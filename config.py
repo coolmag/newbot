@@ -15,7 +15,6 @@ class Source(str, Enum):
     """Перечисление доступных источников музыки."""
     YOUTUBE = "YouTube"
     YOUTUBE_MUSIC = "YouTube Music"
-    DEEZER = "Deezer"
 
 
 @dataclass(frozen=True)

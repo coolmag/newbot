@@ -28,7 +28,6 @@ def get_source_keyboard() -> InlineKeyboardMarkup:
         [
             InlineKeyboardButton(f"📡 {Source.YOUTUBE.value}", callback_data='source_youtube'),
             InlineKeyboardButton(f"🎶 {Source.YOUTUBE_MUSIC.value}", callback_data='source_ytmusic'),
-            InlineKeyboardButton(f"🔵 {Source.DEEZER.value}", callback_data='source_deezer'),
         ],
         [
             InlineKeyboardButton("↩️ Назад в меню", callback_data='menu_refresh'),
