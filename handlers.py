@@ -65,6 +65,7 @@ class BotHandlers:
             CommandHandler(["play", "p"], self.handle_play),
             CommandHandler("admin", self.show_admin_panel),
             CommandHandler(["status", "stat"], self.handle_status),
+            CommandHandler("test", self.test_search),
             CallbackQueryHandler(self.handle_callback),
             ChatMemberHandler(self.handle_chat_member, ChatMemberHandler.MY_CHAT_MEMBER),
             MessageHandler(filters.COMMAND, self.handle_unknown_command),
@@ -150,6 +151,23 @@ class BotHandlers:
     async def handle_status(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         status_text = await self._get_status_text()
         await update.message.reply_text(status_text, parse_mode=ParseMode.MARKDOWN)
+
+    async def test_search(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Команда для тестирования поиска."""
+        query = " ".join(context.args) if context.args else "rock music"
+        
+        test_msg = await update.message.reply_text(f"🔍 Тестовый поиск: {query}")
+        
+        result = await self.youtube.search(query, limit=5)
+        
+        if result:
+            response = f"✅ Найдено {len(result)} треков:\n\n"
+            for i, track in enumerate(result[:5], 1):
+                response += f"{i}. {track.display_name} ({track.duration//60}:{track.duration%60:02d})\n"
+        else:
+            response = f"❌ Не найдено треков для '{query}'"
+        
+        await test_msg.edit_text(response)
 
     # --- Обработчики колбэков и событий ---
 

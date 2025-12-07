@@ -72,16 +72,18 @@ class Settings:
 
     # --- Настройки радио ---
     RADIO_SOURCE: str = "youtube" # youtube или internet_archive
-    RADIO_COOLDOWN_S: int = 240  # 4 минуты
-    RADIO_MAX_DURATION_S: int = int(os.getenv("RADIO_MAX_DURATION_S", 900)) # 15 минут
+    RADIO_COOLDOWN_S: int = 10  # 10 секунд
     RADIO_GENRES: List[str] = [
+        "lo fi",
+        "chillhop",
+        "synthwave",
         "jazz",
-        "rock", 
-        "blues",
-        "classical",
+        "ambient",
         "electronic",
-        "lofi",
-        "chillout"
+        "indie",
+        "pop",
+        "rock",
+        "hip hop"
     ]
     RADIO_SEARCH_PATTERNS: List[str] = [
         "{genre} music",

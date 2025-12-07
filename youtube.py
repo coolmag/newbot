@@ -74,6 +74,9 @@ class YouTubeDownloader(BaseDownloader):
             },
             "no_check_certificate": False,
             "prefer_insecure": False,
+            'match_filter': yt_dlp.utils.match_filter_func(
+                f"duration > 60 & duration < {settings.RADIO_MAX_DURATION_S}"
+            ),
         }
         return options
 
@@ -93,45 +96,98 @@ class YouTubeDownloader(BaseDownloader):
             lambda: yt_dlp.YoutubeDL(ydl_opts).process_info(info)
         )
 
-    async def search(self, query: str, limit: int = 15) -> List[TrackInfo]:
+    async def search(self, query: str, limit: int = 30) -> List[TrackInfo]:
+        """
+        Ищет видео на YouTube и возвращает список треков.
+        """
         logger.info(f"[{self.name}] Поиск видео для '{query}'...")
         
         try:
-            ydl_opts = {
-                'format': 'bestaudio',
-                'quiet': True,
-                'no_warnings': True,
-                'ignoreerrors': True,
-                'default_search': f'ytsearch{limit}',
-                'extract_flat': True, 
-            }
+            ydl_opts = self._get_ydl_options()
             
-            info = await self._extract_info(query, ydl_opts)
+            # Упрощаем фильтры для радио - только базовая проверка
+            ydl_opts['match_filter'] = yt_dlp.utils.match_filter_func(
+                "duration > 60 & !is_live"
+            )
             
-            entries = info.get('entries', []) if info else []
-            if not entries:
+            # Для радио используем более конкретные запросы
+            # Добавляем ключевые слова для музыки
+            search_queries = [
+                f"{query} music official audio",
+                f"{query} song",
+                f"{query} track",
+                f"{query} instrumental",
+                f"{query}"
+            ]
+            
+            all_entries = []
+            
+            for search_query in search_queries:
+                if len(all_entries) >= limit:
+                    break
+                    
+                ydl_opts["default_search"] = f"ytsearch{10}:{search_query}"
+                
+                try:
+                    info = await self._extract_info(search_query, ydl_opts)
+                    entries = info.get('entries', []) if info else []
+                    
+                    for entry in entries:
+                        if not entry:
+                            continue
+                        
+                        # Базовая проверка на валидность
+                        if not entry.get("id"):
+                            continue
+                        
+                        # Пропускаем слишком длинные видео (>30 минут)
+                        duration = int(entry.get("duration", 0))
+                        if duration > 1800:  # 30 минут
+                            continue
+                        
+                        # Проверяем наличие названия
+                        title = entry.get("title", "")
+                        if not title or title.lower() == "unknown title":
+                            continue
+                        
+                        all_entries.append(entry)
+                        
+                except Exception as e:
+                    logger.warning(f"Поиск по запросу '{search_query}' не удался: {e}")
+                    continue
+            
+            if not all_entries:
                 logger.warning(f"Не найдено видео для '{query}'.")
                 return []
 
+            # Преобразуем в TrackInfo
             playlist = []
-            for entry in entries:
-                if not entry: continue
+            seen_ids = set()
+            
+            for entry in all_entries:
+                if len(playlist) >= limit:
+                    break
+                    
+                video_id = entry.get("id")
+                if video_id in seen_ids:
+                    continue
+                    
+                seen_ids.add(video_id)
                 
-                if entry.get('ie_key') == 'YoutubePlaylist': continue
-
-                playlist.append(TrackInfo(
-                    title=entry.get("title", "N/A"),
-                    artist=entry.get("uploader", "N/A"),
+                track_info = TrackInfo(
+                    title=entry.get("title", "Unknown Title"),
+                    artist=entry.get("channel") or entry.get("uploader", "Unknown Artist"),
                     duration=int(entry.get("duration", 0)),
                     source=Source.YOUTUBE.value,
-                    identifier=entry.get("id"),
-                ))
+                    identifier=video_id
+                )
+                playlist.append(track_info)
             
-            logger.info(f"Найдено {len(playlist)} видео для '{query}'.")
+            logger.info(f"Найдено {len(playlist)} треков для '{query}'.")
             return playlist
 
         except Exception as e:
-            logger.error(f"[{self.name}] Ошибка при поиске: {e}", exc_info=True)
+            logger.error(f"[{self.name}] Непредвиденная ошибка при поиске: {e}", exc_info=True)
             return []
 
     async def download(self, query: str) -> DownloadResult:

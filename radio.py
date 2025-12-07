@@ -82,21 +82,47 @@ class RadioService:
 
     async def _fetch_playlist(self):
         """
-        Запрашивает новый плейлист с треками и сохраняет его в состоянии (упрощенная версия для отладки).
+        Запрашивает новый плейлист с треками и сохраняет его в состоянии.
         """
-        logger.info("[Радио] Упрощенное обновление плейлиста...")
+        logger.info("[Радио] Обновление плейлиста...")
         
-        genre = random.choice(settings.RADIO_GENRES)
-        self.state.radio.current_genre = genre
+        # Пробуем разные жанры, пока не найдем с треками
+        genres_to_try = list(settings.RADIO_GENRES)
+        random.shuffle(genres_to_try)
         
-        playlist = await self.downloader.search(genre, limit=15)
+        for genre in genres_to_try:
+            self.state.radio.current_genre = genre
+            
+            # Для YouTube добавляем ключевые слова для поиска отдельных треков
+            search_query = f"{genre} music"
+            playlist = await self.downloader.search(search_query, limit=50)
+            
+            if playlist and len(playlist) >= 5:
+                # Фильтруем по длительности
+                filtered_playlist = [
+                    track for track in playlist 
+                    if 120 <= track.duration <= 600  # 2-10 минут
+                ]
+                
+                if filtered_playlist:
+                    random.shuffle(filtered_playlist)
+                    self.state.radio.playlist = filtered_playlist
+                    logger.info(f"[Радио] Плейлист обновлен. {len(filtered_playlist)} треков в жанре '{genre}'.")
+                    return
+                    
+            logger.warning(f"[Радио] Не удалось получить плейлист для жанра '{genre}'. Пробую следующий...")
+        
+        # Если ничего не найдено, используем общий поиск
+        logger.warning("[Радио] Все жанры вернули пустые результаты. Использую общий поиск.")
+        self.state.radio.current_genre = "music"
+        playlist = await self.downloader.search("music", limit=30)
         
         if playlist:
             random.shuffle(playlist)
             self.state.radio.playlist = playlist
-            logger.info(f"[Радио] Упрощенный плейлист обновлен. {len(playlist)} треков в жанре '{genre}'.")
+            logger.info(f"[Радио] Использую резервный плейлист. {len(playlist)} треков.")
         else:
-            logger.warning(f"[Радио] Не удалось получить плейлист для жанра '{genre}' в упрощенном режиме.")
+            logger.error("[Радио] Не удалось получить ни один плейлист.")
             self.state.radio.playlist = []
 
     async def _radio_loop(self, chat_id: int):
