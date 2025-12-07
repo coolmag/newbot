@@ -51,6 +51,8 @@ class BotHandlers:
 
     async def register(self):
         """Регистрирует все обработчики в приложении."""
+        from telegram.ext import MessageHandler, filters
+        
         handlers = [
             CommandHandler("start", self.start),
             CommandHandler("menu", self.show_menu),
@@ -62,6 +64,8 @@ class BotHandlers:
             CommandHandler("help", self.handle_help),
             CallbackQueryHandler(self.handle_callback),
             ChatMemberHandler(self.handle_chat_member, ChatMemberHandler.MY_CHAT_MEMBER),
+            # Обработчик для логирования всех сообщений (для отладки)
+            MessageHandler(filters.COMMAND, self.handle_unknown_command),
         ]
         for handler in handlers:
             self.app.add_handler(handler)
@@ -114,25 +118,53 @@ class BotHandlers:
         elif new_status == ChatMemberStatus.LEFT:
             logger.info(f"Бот удален из {chat.type}: {chat.title or chat.username} (ID: {chat.id})")
 
+    async def handle_unknown_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обрабатывает неизвестные команды."""
+        try:
+            if update.message and update.message.text:
+                command = update.message.text.split()[0] if update.message.text else "unknown"
+                logger.warning(f"Получена неизвестная команда: {command} от пользователя {update.effective_user.id} в чате {update.effective_chat.id}")
+                # Не отвечаем на неизвестные команды, чтобы не спамить
+        except Exception as e:
+            logger.error(f"Ошибка в handle_unknown_command: {e}", exc_info=True)
+
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        user = update.effective_user
-        logger.info(f"Пользователь {user.full_name} ({user.id}) запустил бота.")
-        
-        welcome_text = (
-            f"👋 Привет, {user.first_name}!\n\n"
-            "Я — музыкальный бот. Я помогу тебе найти и скачать музыку.\n\n"
-            "Просто отправь мне команду /play с названием трека, и я найду его для тебя.\n\n"
-            "Используй /help, чтобы увидеть все команды."
-        )
-        await update.message.reply_text(welcome_text, reply_markup=get_main_keyboard())
+        try:
+            user = update.effective_user
+            chat = update.effective_chat
+            logger.info(f"Получена команда /start от пользователя {user.full_name} ({user.id}) в чате {chat.type} {chat.id}")
+            
+            welcome_text = (
+                f"👋 Привет, {user.first_name}!\n\n"
+                "Я — музыкальный бот. Я помогу тебе найти и скачать музыку.\n\n"
+                "Просто отправь мне команду /play с названием трека, и я найду его для тебя.\n\n"
+                "Используй /help, чтобы увидеть все команды."
+            )
+            await update.message.reply_text(welcome_text, reply_markup=get_main_keyboard())
+        except Exception as e:
+            logger.error(f"Ошибка в команде /start: {e}", exc_info=True)
+            if update.message:
+                try:
+                    await update.message.reply_text("❌ Произошла ошибка при обработке команды.")
+                except:
+                    pass
 
     async def show_menu(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        status_text = await self._get_status_text()
-        await update.message.reply_text(
-            status_text,
-            reply_markup=get_main_keyboard(),
-            parse_mode=ParseMode.MARKDOWN,
-        )
+        try:
+            logger.info(f"Получена команда /menu от пользователя {update.effective_user.id} в чате {update.effective_chat.id}")
+            status_text = await self._get_status_text()
+            await update.message.reply_text(
+                status_text,
+                reply_markup=get_main_keyboard(),
+                parse_mode=ParseMode.MARKDOWN,
+            )
+        except Exception as e:
+            logger.error(f"Ошибка в команде /menu: {e}", exc_info=True)
+            if update.message:
+                try:
+                    await update.message.reply_text("❌ Произошла ошибка при обработке команды.")
+                except:
+                    pass
 
     async def handle_play(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         is_valid, query_or_error = validate_query(" ".join(context.args))
@@ -190,7 +222,16 @@ class BotHandlers:
             await update.message.reply_text("⚠️ Неизвестная команда. Используйте `/radio on` или `/radio off`.")
 
     async def handle_source(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_text("💿 Выберите источник для поиска:", reply_markup=get_source_keyboard())
+        try:
+            logger.info(f"Получена команда /source от пользователя {update.effective_user.id} в чате {update.effective_chat.id}")
+            await update.message.reply_text("💿 Выберите источник для поиска:", reply_markup=get_source_keyboard())
+        except Exception as e:
+            logger.error(f"Ошибка в команде /source: {e}", exc_info=True)
+            if update.message:
+                try:
+                    await update.message.reply_text("❌ Произошла ошибка при обработке команды.")
+                except:
+                    pass
 
     async def handle_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         query = update.callback_query

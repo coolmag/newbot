@@ -33,12 +33,17 @@ async def main() -> None:
         logger.info(f"🔑 Токен: ...{settings.BOT_TOKEN[-6:]}")
 
         await app.initialize()
+        
+        # Запускаем polling
         await app.updater.start_polling(
             drop_pending_updates=True,
             allowed_updates=["message", "callback_query", "my_chat_member"],
+            poll_interval=1.0,
+            timeout=10,
         )
-
+        
         logger.info("✅ Бот запущен и готов к работе.")
+        logger.info("✅ Polling активен, ожидаю обновления...")
         logger.info("Для остановки нажмите Ctrl+C")
 
         await asyncio.Event().wait()
