@@ -3,6 +3,7 @@ import os
 from enum import Enum
 from pathlib import Path
 from typing import List, Optional
+from dataclasses import dataclass
 
 from dotenv import load_dotenv
 
