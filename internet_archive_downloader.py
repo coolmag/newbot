@@ -29,7 +29,7 @@ class InternetArchiveDownloader(BaseDownloader):
         
         try:
             search_params = {
-                "q": f"mediatype:audio AND subject:\"{query}\"",
+                "q": f"mediatype:audio AND (subject:(\"{query}\") OR description:(\"{query}\") OR title:(\"{query}\"))",
                 "fl[]": ["identifier", "title", "creator", "length"],
                 "rows": limit,
                 "page": random.randint(1, 5),

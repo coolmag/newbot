@@ -114,24 +114,33 @@ class RadioService:
             try:
                 # 1. Проверяем и при необходимости обновляем плейлист
                 if not self.state.radio.playlist:
-                    if status_message:
-                        await status_message.edit_text("🎵 Обновляю плейлист радио...")
-                    else:
+                    try:
+                        if status_message:
+                            await status_message.edit_text("🎵 Обновляю плейлист радио...")
+                        else:
+                            status_message = await self.bot.send_message(chat_id, "🎵 Обновляю плейлист радио...")
+                    except TelegramError:
                         status_message = await self.bot.send_message(chat_id, "🎵 Обновляю плейлист радио...")
                     
                     await self._fetch_playlist()
                     
                     if not self.state.radio.playlist:
-                        if status_message:
-                            await status_message.edit_text("😔 Не удалось обновить плейлист. Повторю через 1 минуту.")
+                        try:
+                            if status_message:
+                                await status_message.edit_text("😔 Не удалось обновить плейлист. Повторю через 1 минуту.")
+                        except TelegramError:
+                            pass
                         await asyncio.sleep(60)
                         continue
 
                 # 2. Берем следующий трек из плейлиста
                 track_to_play = self.state.radio.playlist.pop(0)
                 
-                if status_message:
-                    await status_message.edit_text(f"🎵 Скачиваю: {track_to_play.display_name}...")
+                try:
+                    if status_message:
+                        await status_message.edit_text(f"🎵 Скачиваю: {track_to_play.display_name}...")
+                except TelegramError:
+                    status_message = await self.bot.send_message(chat_id, f"🎵 Скачиваю: {track_to_play.display_name}...")
                 
                 # 3. Скачиваем трек
                 if settings.RADIO_SOURCE == "internet_archive" and track_to_play.identifier:
@@ -141,8 +150,11 @@ class RadioService:
                 result = await self.downloader.download_with_retry(query)
 
                 if result and result.success:
-                    if status_message:
-                        await status_message.edit_text("📤 Отправляю трек...")
+                    try:
+                        if status_message:
+                            await status_message.edit_text("📤 Отправляю трек...")
+                    except TelegramError:
+                        pass
                     
                     caption = f"🎶 *Радио | {self.state.radio.current_genre.capitalize()}*\n\n`{track_to_play.display_name}`"
                     await self._send_radio_audio(chat_id, result, caption)
@@ -165,15 +177,22 @@ class RadioService:
                         self.state.radio.skip_event.clear()
                 else:
                     logger.warning(f"Не удалось скачать трек: {track_to_play.display_name}. Пропускаю.")
-                    if status_message:
-                        await status_message.edit_text(f"⚠️ Не удалось скачать трек. Пропускаю...")
+                    try:
+                        if status_message:
+                            await status_message.edit_text(f"⚠️ Не удалось скачать трек. Пропускаю...")
+                    except TelegramError:
+                        pass
 
             except asyncio.CancelledError:
                 logger.info("Радио-цикл отменен.")
                 break
             except TelegramError as e:
-                logger.error(f"Ошибка Telegram в радио-цикле: {e}. Радио остановлено.")
-                await self.stop()
+                if "Message to edit not found" in str(e):
+                    logger.warning("Сообщение для редактирования не найдено, возможно, оно было удалено.")
+                    status_message = None # Сбрасываем, чтобы отправить новое
+                else:
+                    logger.error(f"Ошибка Telegram в радио-цикле: {e}. Радио остановлено.")
+                    await self.stop()
             except Exception as e:
                 logger.critical(f"Критическая ошибка в радио-цикле: {e}", exc_info=True)
                 await asyncio.sleep(60)
