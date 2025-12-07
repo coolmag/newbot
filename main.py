@@ -23,6 +23,8 @@ async def main() -> None:
     logger.info(f"✅ Администраторы: {settings.ADMIN_IDS}")
 
     handlers_instance = None
+    app = None
+    
     try:
         app = Application.builder().token(settings.BOT_TOKEN).build()
 
@@ -32,12 +34,13 @@ async def main() -> None:
         logger.info("✅ Бот успешно инициализирован.")
         logger.info(f"🔑 Токен: ...{settings.BOT_TOKEN[-6:]}")
 
-        await app.initialize()
-        await app.start()
-        
         # Проверяем статус бота
         bot_info = await app.bot.get_me()
         logger.info(f"✅ Бот активен: @{bot_info.username} ({bot_info.first_name})")
+        
+        # Инициализируем и запускаем приложение
+        await app.initialize()
+        await app.start()
         
         # Запускаем polling
         await app.updater.start_polling(
@@ -49,19 +52,20 @@ async def main() -> None:
         logger.info("✅ Polling активен, ожидаю обновления...")
         logger.info("Для остановки нажмите Ctrl+C")
 
-        # Используем run_polling вместо Event().wait() для правильной работы
-        await app.updater.idle()
+        # Ждем бесконечно, пока не получим сигнал остановки
+        await asyncio.Event().wait()
 
     except KeyboardInterrupt:
-        logger.info("👋 Получен сигнал остановки...")
+        logger.info("👋 Получен сигнал остановки (KeyboardInterrupt)...")
     except Exception as e:
         logger.critical(f"❌ Критическая ошибка при запуске бота: {e}", exc_info=True)
     finally:
         # Graceful shutdown
+        logger.info("🛑 Останавливаю бота...")
         try:
             if handlers_instance:
                 await handlers_instance.cleanup()
-            if 'app' in locals():
+            if app:
                 await app.updater.stop()
                 await app.stop()
                 await app.shutdown()
@@ -78,4 +82,3 @@ if __name__ == "__main__":
     except Exception as e:
         logger.critical(f"❌ Непредвиденная ошибка в главном цикле: {e}", exc_info=True)
         sys.exit(1)
-
