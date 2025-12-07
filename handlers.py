@@ -232,10 +232,8 @@ class BotHandlers:
 
         return (
             f"**⚙️ Статус Бота**\n\n"
-            f"*Система:*
-{sys_status}\n\n"
-            f"*Бот:*
-"
+            f"*Система:*\n{sys_status}\n\n"
+            f"*Бот:*\n"
             f"• Источник: `{self.state.source.value}`\n"
             f"• Радио: {radio_status}"
         )
