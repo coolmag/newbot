@@ -67,16 +67,20 @@ class YouTubeDownloader(BaseDownloader):
             # Опции для обхода блокировки
             "user_agent": user_agent,
             "referer": "https://www.youtube.com/",
-            # "extractor_args": {
-            #     "youtube": {
-            #         "player_client": ["android", "web"],
-            #         "player_skip": ["webpage", "configs"],
-            #     }
-            # },
+            "extractor_args": {
+                "youtube": {
+                    "player_client": ["android", "web"],
+                    "player_skip": ["webpage", "configs"],
+                }
+            },
             # Дополнительные опции
             "no_check_certificate": False,
             "prefer_insecure": False,
         }
+
+        # Фильтр по длительности для обычного поиска (не для аудиокниг)
+        if not is_long:
+            options['match_filter'] = yt_dlp.utils.match_filter_func("duration < 900")
 
         # Используем cookies, если они указаны
         # if settings.COOKIES_FILE and os.path.exists(settings.COOKIES_FILE):
