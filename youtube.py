@@ -67,22 +67,21 @@ class YouTubeDownloader(BaseDownloader):
             # Опции для обхода блокировки
             "user_agent": user_agent,
             "referer": "https://www.youtube.com/",
-            # "extractor_args": {
-            #     "youtube": {
-            #         "player_client": ["android", "web"],
-            #         "player_skip": ["webpage", "configs"],
-            #     }
-            # },
+            "extractor_args": {
+                "youtube": {
+                    "player_client": ["android", "web"],  # Пробуем разные клиенты
+                    "player_skip": ["webpage", "configs"],
+                }
+            },
             # Дополнительные опции
             "no_check_certificate": False,
             "prefer_insecure": False,
-            "verbose": True,
         }
 
         # Используем cookies, если они указаны
-        # if settings.COOKIES_FILE and os.path.exists(settings.COOKIES_FILE):
-        #     options["cookiefile"] = settings.COOKIES_FILE
-        #     logger.info(f"Используются cookies из файла: {settings.COOKIES_FILE}")
+        if settings.COOKIES_FILE and os.path.exists(settings.COOKIES_FILE):
+            options["cookiefile"] = settings.COOKIES_FILE
+            logger.info(f"Используются cookies из файла: {settings.COOKIES_FILE}")
         
         # Для аудиокниг ищем больше результатов и берем самый длинный
         if is_long:

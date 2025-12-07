@@ -61,7 +61,7 @@ class Settings:
 
     # --- Настройки загрузчика ---
     MAX_QUERY_LENGTH: int = 150
-    MAX_FILE_SIZE_MB: int = 48
+    MAX_FILE_SIZE_MB: int = 50
     DOWNLOAD_TIMEOUT_S: int = 60  # Увеличено для медленных соединений
 
     # --- Настройки повторных попыток ---
