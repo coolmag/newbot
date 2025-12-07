@@ -88,6 +88,7 @@ class RadioService:
         logger.info(f"▶️ Радио-цикл запущен для чата {chat_id}.")
         await asyncio.sleep(2)  # Небольшая задержка перед первым треком
 
+        status_message = None
         while self.state.radio.is_on:
             download_successful = False
             result: Optional[DownloadResult] = None
@@ -96,6 +97,13 @@ class RadioService:
                 genre = random.choice(settings.RADIO_GENRES)
                 self.state.radio.current_genre = genre
                 logger.info(f"[Радио] Выбран жанр: '{genre}' для чата {chat_id}.")
+                
+                if status_message:
+                    await status_message.edit_text(f"🎵 Ищу трек для радио (жанр: {genre})...")
+                else:
+                    status_message = await self.bot.send_message(
+                        chat_id, f"🎵 Ищу трек для радио (жанр: {genre})..."
+                    )
                 
                 for pattern in settings.RADIO_SEARCH_PATTERNS:
                     search_query = pattern.format(genre=genre)
@@ -116,15 +124,26 @@ class RadioService:
                 
                 if not download_successful:
                     logger.warning(f"[Радио] Не удалось найти трек для жанра '{genre}' после всех попыток. Пауза 30с.")
+                    if status_message:
+                        await status_message.edit_text(
+                            f"😔 Не удалось найти трек для жанра '{genre}'. Попробую другой через 30с."
+                        )
                     await asyncio.sleep(30)
                     continue # Пропускаем остальную часть цикла и начинаем новую итерацию
                 
                 # Если скачивание успешно, продолжаем
                 if result and result.success:
+                    if status_message:
+                        await status_message.edit_text("📤 Отправляю трек...")
+                    
                     # 3. Отправляем трек в чат через специализированный метод
                     track = result.track_info
                     caption = f"🎶 *Радио | {genre.capitalize()}*\n\n`{track.display_name}`"
                     await self._send_radio_audio(chat_id, result, caption)
+                    
+                    if status_message:
+                        await status_message.delete()
+                        status_message = None
                     
                     # 4. Ожидаем кулдаун или событие пропуска
                     try:
@@ -154,8 +173,11 @@ class RadioService:
                 logger.critical(f"Критическая ошибка в радио-цикле: {e}", exc_info=True)
                 await asyncio.sleep(60) # Делаем большую паузу в случае серьезного сбоя
             finally:
-                # 5. Удаляем скачанный файл (уже сделано в _send_radio_audio)
-                pass # Тут не нужно, так как _send_radio_audio уже удалил файл
+                if status_message:
+                    try:
+                        await status_message.delete()
+                    except TelegramError:
+                        pass # Сообщение могло быть уже удалено
         
         logger.info(f"⏹️ Радио-цикл завершен для чата {chat_id}.")
         self.state.radio.is_on = False
