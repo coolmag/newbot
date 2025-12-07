@@ -74,7 +74,6 @@ class YouTubeDownloader(BaseDownloader):
             },
             "no_check_certificate": False,
             "prefer_insecure": False,
-            'match_filter': yt_dlp.utils.match_filter_func(f"duration < {settings.RADIO_MAX_DURATION_S}"),
         }
         return options
 
@@ -94,70 +93,45 @@ class YouTubeDownloader(BaseDownloader):
             lambda: yt_dlp.YoutubeDL(ydl_opts).process_info(info)
         )
 
-    async def search(self, query: str, limit: int = 30) -> List[TrackInfo]:
-        """
-        Ищет видео на YouTube и возвращает список треков.
-        """
-        logger.info(f"[{self.name}] Поиск плейлиста для '{query}' на YouTube...")
+    async def search(self, query: str, limit: int = 15) -> List[TrackInfo]:
+        logger.info(f"[{self.name}] Поиск видео для '{query}'...")
         
         try:
-            ydl_opts = self._get_ydl_options()
+            ydl_opts = {
+                'format': 'bestaudio',
+                'quiet': True,
+                'no_warnings': True,
+                'ignoreerrors': True,
+                'default_search': f'ytsearch{limit}',
+                'extract_flat': True, 
+            }
             
-            search_query = f"{query} music song"
-            ydl_opts["default_search"] = f"ytsearch{limit*2}:{search_query}"
-            
-            ydl_opts['match_filter'] = yt_dlp.utils.match_filter_func(
-                f"duration > 60 & duration < 600 & !is_live & !playlist"
-            )
-            
-            info = await self._extract_info(search_query, ydl_opts)
+            info = await self._extract_info(query, ydl_opts)
             
             entries = info.get('entries', []) if info else []
             if not entries:
-                logger.warning(f"Не найдено треков для '{query}' на YouTube.")
+                logger.warning(f"Не найдено видео для '{query}'.")
                 return []
 
             playlist = []
-            seen_ids = set()
-            
             for entry in entries:
-                if not entry:
-                    continue
+                if not entry: continue
                 
-                video_id = entry.get("id")
-                if not video_id or video_id in seen_ids:
-                    continue
-                    
-                title = entry.get("title", "").lower()
-                if any(word in title for word in ["mix", "playlist", "compilation", "album", "full album", "live concert"]):
-                    continue
-                
-                duration = int(entry.get("duration", 0))
-                if duration < 60 or duration > 600:
-                    continue
-                
-                artist = entry.get("channel") or entry.get("uploader", "Unknown Artist")
-                if artist == "Unknown Artist" or "Topic" in artist:
-                    continue
-                
-                track_info = TrackInfo(
-                    title=entry.get("title", "Unknown Title"),
-                    artist=artist,
-                    duration=duration,
+                if entry.get('ie_key') == 'YoutubePlaylist': continue
+
+                playlist.append(TrackInfo(
+                    title=entry.get("title", "N/A"),
+                    artist=entry.get("uploader", "N/A"),
+                    duration=int(entry.get("duration", 0)),
                     source=Source.YOUTUBE.value,
-                    identifier=video_id
-                )
-                playlist.append(track_info)
-                seen_ids.add(video_id)
-                
-                if len(playlist) >= limit:
-                    break
+                    identifier=entry.get("id"),
+                ))
             
-            logger.info(f"Найдено {len(playlist)} треков для '{query}'.")
+            logger.info(f"Найдено {len(playlist)} видео для '{query}'.")
             return playlist
 
         except Exception as e:
-            logger.error(f"[{self.name}] Непредвиденная ошибка при поиске: {e}", exc_info=True)
+            logger.error(f"[{self.name}] Ошибка при поиске: {e}", exc_info=True)
             return []
 
     async def download(self, query: str) -> DownloadResult:

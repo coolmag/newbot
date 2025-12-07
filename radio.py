@@ -82,40 +82,21 @@ class RadioService:
 
     async def _fetch_playlist(self):
         """
-        Запрашивает новый плейлист с треками и сохраняет его в состоянии.
+        Запрашивает новый плейлист с треками и сохраняет его в состоянии (упрощенная версия для отладки).
         """
-        logger.info("[Радио] Обновление плейлиста...")
+        logger.info("[Радио] Упрощенное обновление плейлиста...")
         
-        genres_to_try = list(settings.RADIO_GENRES)
-        random.shuffle(genres_to_try)
+        genre = random.choice(settings.RADIO_GENRES)
+        self.state.radio.current_genre = genre
         
-        for genre in genres_to_try:
-            self.state.radio.current_genre = genre
-            
-            playlist = await self.downloader.search(genre, limit=50)
-            
-            if playlist and len(playlist) >= 5:
-                filtered_playlist = [track for track in playlist if 60 <= track.duration <= 1200]
-                
-                if filtered_playlist:
-                    random.shuffle(filtered_playlist)
-                    self.state.radio.playlist = filtered_playlist
-                    logger.info(f"[Радио] Плейлист обновлен. {len(filtered_playlist)} треков в жанре '{genre}'.")
-                    return
-            
-            logger.warning(f"[Радио] Не удалось получить плейлист для жанра '{genre}'. Пробую следующий...")
-            await asyncio.sleep(1)
-        
-        logger.warning("[Радио] Все жанры вернули пустые результаты. Использую резервный запрос.")
-        self.state.radio.current_genre = "music"
-        playlist = await self.downloader.search("music collection:opensource_audio", limit=30)
+        playlist = await self.downloader.search(genre, limit=15)
         
         if playlist:
             random.shuffle(playlist)
             self.state.radio.playlist = playlist
-            logger.info(f"[Радио] Использую резервный плейлист. {len(playlist)} треков.")
+            logger.info(f"[Радио] Упрощенный плейлист обновлен. {len(playlist)} треков в жанре '{genre}'.")
         else:
-            logger.error("[Радио] Не удалось получить ни один плейлист.")
+            logger.warning(f"[Радио] Не удалось получить плейлист для жанра '{genre}' в упрощенном режиме.")
             self.state.radio.playlist = []
 
     async def _radio_loop(self, chat_id: int):
