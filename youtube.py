@@ -76,7 +76,6 @@ class YouTubeDownloader(BaseDownloader):
             # Дополнительные опции
             "no_check_certificate": False,
             "prefer_insecure": False,
-            "verbose": True,
         }
 
         # Используем cookies, если они указаны

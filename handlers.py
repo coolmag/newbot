@@ -1,4 +1,3 @@
-
 import asyncio
 import os
 import sys
@@ -8,28 +7,26 @@ from telegram.ext import Application, ContextTypes, CommandHandler, CallbackQuer
 from telegram.constants import ParseMode, ChatMemberStatus
 from telegram.error import BadRequest, Forbidden
 
-from config import settings, Source
-from keyboards import get_main_keyboard, get_source_keyboard
+from config import settings
+from keyboards import get_main_menu_keyboard, get_admin_panel_keyboard
 from states import BotState
 from youtube import YouTubeDownloader
 from base import DownloadResult
 from radio import RadioService
 from logger import logger
 
-
-def is_admin(update: Update) -> bool:
+def is_admin(user_id: int) -> bool:
     """Проверяет, является ли пользователь администратором."""
-    return update.effective_user.id in settings.ADMIN_IDS
+    return user_id in settings.ADMIN_IDS
 
-
-def validate_query(query: str) -> tuple[bool, str]:
+def validate_query(query: str, command: str) -> tuple[bool, str]:
     """Валидирует поисковый запрос."""
     if not query:
-        return False, "⚠️ Укажите название трека или книги.\nПример: `/play a-ha take on me`"
+        return False, f"⚠️ Укажите название.\nПример: `/{command} Queen - Bohemian Rhapsody`"
     
     clean_query = query.strip()
     if len(clean_query) < 2:
-        return False, "⚠️ Запрос слишком короткий. Введите минимум 2 символа."
+        return False, "⚠️ Запрос слишком короткий (минимум 2 символа)."
     
     if len(clean_query) > settings.MAX_QUERY_LENGTH:
         return False, f"⚠️ Запрос слишком длинный (макс. {settings.MAX_QUERY_LENGTH} символов)."
@@ -52,286 +49,234 @@ class BotHandlers:
         from telegram.ext import MessageHandler, filters
         
         handlers = [
-            CommandHandler("start", self.start),
+            CommandHandler(["start", "help"], self.show_help),
             CommandHandler("menu", self.show_menu),
-            CommandHandler(["play", "p"], self.handle_play),
-            CommandHandler(["audiobook", "ab"], self.handle_audiobook),
-            CommandHandler("radio", self.handle_radio),
-            CommandHandler(["source", "src"], self.handle_source),
-            CommandHandler(["status", "stat"], self.handle_status),
-            CommandHandler("help", self.handle_help),
+            CommandHandler("play", self.handle_play),
+            CommandHandler("audiobook", self.handle_audiobook),
+            CommandHandler("admin", self.show_admin_panel),
+            CommandHandler("status", self.handle_status),
             CallbackQueryHandler(self.handle_callback),
             ChatMemberHandler(self.handle_chat_member, ChatMemberHandler.MY_CHAT_MEMBER),
+            MessageHandler(filters.COMMAND, self.handle_unknown_command),
         ]
         for handler in handlers:
             self.app.add_handler(handler)
-        
-        # Обработчик для логирования всех команд (должен быть последним)
-        self.app.add_handler(MessageHandler(filters.COMMAND, self.handle_unknown_command))
         
         logger.info("✅ Обработчики команд зарегистрированы.")
 
     async def cleanup(self):
         """Очищает ресурсы при завершении работы бота."""
-        try:
-            await self.radio.stop()
-            logger.info("✅ Ресурсы очищены.")
-        except Exception as e:
-            logger.error(f"⚠️ Ошибка при очистке ресурсов: {e}")
+        await self.radio.stop()
+        logger.info("✅ Радио-сервис остановлен, ресурсы очищены.")
 
-    async def handle_chat_member(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обрабатывает событие добавления/удаления бота в канал/группу."""
-        if not update.my_chat_member:
-            return
+    # --- Обработчики команд ---
+
+    async def show_help(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        user = update.effective_user
+        logger.info(f"Команда /start или /help от {user.full_name} ({user.id})")
         
-        chat = update.effective_chat
-        old_status = update.my_chat_member.old_chat_member.status
-        new_status = update.my_chat_member.new_chat_member.status
-        
-        # Если бота только что добавили (был LEFT, стал MEMBER или ADMINISTRATOR)
-        if old_status == ChatMemberStatus.LEFT and new_status in [ChatMemberStatus.MEMBER, ChatMemberStatus.ADMINISTRATOR]:
-            logger.info(f"Бот добавлен в {chat.type}: {chat.title or chat.username} (ID: {chat.id})")
-            
-            welcome_text = (
-                "🎵 **Музыкальный бот запущен!**\n\n"
-                "Привет! Я готов помочь вам найти и скачать музыку.\n\n"
-                "**Основные команды:**\n"
-                "• `/play <название>` - Найти и скачать трек\n"
-                "• `/audiobook <название>` - Найти аудиокнигу\n"
-                "• `/menu` - Показать меню\n"
-                "• `/help` - Справка по командам\n\n"
-                "Используйте кнопки ниже для быстрого доступа к функциям."
+        help_text = (
+            "🎵 **Добро пожаловать в Groove AI!**\n\n"
+            "Я ваш персональный музыкальный ассистент. Вот что я умею:\n\n"
+            "**Основные команды:**\n"
+            "📖 `/play <название>` - Найти и скачать трек.\n"
+            "🎧 `/audiobook <название>` - Найти и скачать аудиокнигу (ищет длинные видео).\n\n"
+            "**Меню и статус:**\n"
+            "🎛️ `/menu` - Показать главное меню с текущим статусом и быстрыми действиями.\n"
+            "📊 `/status` - Узнать текущую нагрузку на сервер и статус радио.\n\n"
+        )
+        if is_admin(user.id):
+            help_text += (
+                "**👑 Для администраторов:**\n"
+                "🕹️ `/admin` - Открыть панель управления радио.\n"
             )
-            
-            try:
-                await context.bot.send_message(
-                    chat_id=chat.id,
-                    text=welcome_text,
-                    reply_markup=get_main_keyboard(),
-                    parse_mode=ParseMode.MARKDOWN
-                )
-            except Exception as e:
-                logger.error(f"Не удалось отправить приветствие в чат {chat.id}: {e}")
         
-        # Если бота удалили
-        elif new_status == ChatMemberStatus.LEFT:
-            logger.info(f"Бот удален из {chat.type}: {chat.title or chat.username} (ID: {chat.id})")
+        help_text += "\nПросто отправьте команду, и я начну работу!"
 
-    async def handle_unknown_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обрабатывает неизвестные команды."""
-        try:
-            if update.message and update.message.text:
-                command = update.message.text.split()[0] if update.message.text else "unknown"
-                logger.warning(f"⚠️ Получена неизвестная команда: {command} от пользователя {update.effective_user.id} в чате {update.effective_chat.id} ({update.effective_chat.type})")
-                # Не отвечаем на неизвестные команды, чтобы не спамить
-        except Exception as e:
-            logger.error(f"Ошибка в handle_unknown_command: {e}", exc_info=True)
-
-    async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        try:
-            user = update.effective_user
-            chat = update.effective_chat
-            logger.info(f"Получена команда /start от пользователя {user.full_name} ({user.id}) в чате {chat.type} {chat.id}")
-            
-            welcome_text = (
-                f"👋 Привет, {user.first_name}!\n\n"
-                "Я — музыкальный бот. Я помогу тебе найти и скачать музыку.\n\n"
-                "Просто отправь мне команду /play с названием трека, и я найду его для тебя.\n\n"
-                "Используй /help, чтобы увидеть все команды."
-            )
-            await update.message.reply_text(welcome_text, reply_markup=get_main_keyboard())
-        except Exception as e:
-            logger.error(f"Ошибка в команде /start: {e}", exc_info=True)
-            if update.message:
-                try:
-                    await update.message.reply_text("❌ Произошла ошибка при обработке команды.")
-                except:
-                    pass
+        await update.message.reply_text(
+            help_text,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=get_main_menu_keyboard(is_admin(user.id))
+        )
 
     async def show_menu(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        try:
-            logger.info(f"Получена команда /menu от пользователя {update.effective_user.id} в чате {update.effective_chat.id}")
-            status_text = await self._get_status_text()
-            await update.message.reply_text(
-                status_text,
-                reply_markup=get_main_keyboard(),
-                parse_mode=ParseMode.MARKDOWN,
-            )
-        except Exception as e:
-            logger.error(f"Ошибка в команде /menu: {e}", exc_info=True)
-            if update.message:
-                try:
-                    await update.message.reply_text("❌ Произошла ошибка при обработке команды.")
-                except:
-                    pass
-
-    async def handle_play(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        is_valid, query_or_error = validate_query(" ".join(context.args))
-        if not is_valid:
-            await update.message.reply_text(query_or_error)
-            return
-
-        search_msg = await update.message.reply_text(f"🔍 Ищу трек: `{query_or_error}`...", parse_mode=ParseMode.MARKDOWN)
+        user_id = update.effective_user.id
+        logger.info(f"Команда /menu от {user_id}")
         
-        # Всегда используем YouTube (Deezer убран)
-        result = await self.youtube.download_with_retry(query_or_error)
+        status_text = await self._get_status_text()
+        await update.message.reply_text(
+            status_text,
+            reply_markup=get_main_menu_keyboard(is_admin(user_id)),
+            parse_mode=ParseMode.MARKDOWN,
+        )
 
-        if result and result.success:
-            await self._send_audio(context, update.effective_chat.id, search_msg, result)
-        else:
-            await search_msg.edit_text(f"❌ Не удалось найти трек `{query_or_error}`.", parse_mode=ParseMode.MARKDOWN)
-
-    async def handle_audiobook(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        is_valid, query_or_error = validate_query(" ".join(context.args))
-        if not is_valid:
-            await update.message.reply_text(query_or_error)
-            return
-
-        search_msg = await update.message.reply_text(f"📚 Ищу аудиокнигу: `{query_or_error}`...", parse_mode=ParseMode.MARKDOWN)
-        
-        result = await self.youtube.download_long(f"{query_or_error} аудиокнига")
-        
-        if result and result.success:
-            await self._send_audio(context, update.effective_chat.id, search_msg, result)
-        else:
-            await search_msg.edit_text(f"❌ Не удалось найти аудиокнигу `{query_or_error}`.", parse_mode=ParseMode.MARKDOWN)
-
-    async def handle_radio(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        if not is_admin(update):
+    async def show_admin_panel(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        user_id = update.effective_user.id
+        if not is_admin(user_id):
             await update.message.reply_text("⛔ Эта команда доступна только администраторам.")
             return
 
-        if not context.args:
-            await update.message.reply_text("▶️ Укажите действие: `/radio on` или `/radio off`.")
+        logger.info(f"Команда /admin от {user_id}")
+        status_text = await self._get_status_text()
+        
+        await update.message.reply_text(
+            f"👑 **Админ-панель**\n\n{status_text}",
+            reply_markup=get_admin_panel_keyboard(self.state.radio.is_on),
+            parse_mode=ParseMode.MARKDOWN,
+        )
+
+    async def handle_play(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        is_valid, query = validate_query(" ".join(context.args), "play")
+        if not is_valid:
+            await update.message.reply_text(query, parse_mode=ParseMode.MARKDOWN)
             return
-            
-        action = context.args[0].lower()
-        if action == "on":
-            await self.radio.start(update.effective_chat.id)
-            await update.message.reply_text("✅ Радио включено. Музыка скоро начнет играть.")
-        elif action == "off":
-            await self.radio.stop()
-            await update.message.reply_text("✅ Радио выключено.")
+
+        search_msg = await update.message.reply_text(f"🔍 Ищу трек: `{query}`...", parse_mode=ParseMode.MARKDOWN)
+        result = await self.youtube.download_with_retry(query)
+
+        if result.success:
+            await self._send_audio(context, update.effective_chat.id, search_msg, result)
         else:
-            await update.message.reply_text("⚠️ Неизвестная команда. Используйте `/radio on` или `/radio off`.")
+            await search_msg.edit_text(f"❌ Не удалось найти `{query}`. {result.error}", parse_mode=ParseMode.MARKDOWN)
 
-    async def handle_source(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        try:
-            logger.info(f"Получена команда /source от пользователя {update.effective_user.id} в чате {update.effective_chat.id}")
-            await update.message.reply_text("💿 Выберите источник для поиска:", reply_markup=get_source_keyboard())
-        except Exception as e:
-            logger.error(f"Ошибка в команде /source: {e}", exc_info=True)
-            if update.message:
-                try:
-                    await update.message.reply_text("❌ Произошла ошибка при обработке команды.")
-                except:
-                    pass
-
-    async def handle_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        query = update.callback_query
-        if not query:
+    async def handle_audiobook(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        is_valid, query = validate_query(" ".join(context.args), "audiobook")
+        if not is_valid:
+            await update.message.reply_text(query, parse_mode=ParseMode.MARKDOWN)
             return
-        
-        await query.answer()
-        
-        action = query.data
-        if not action:
-            return
-            
-        chat_id = update.effective_chat.id
 
-        source_map = {
-            'source_youtube': Source.YOUTUBE,
-            'source_ytmusic': Source.YOUTUBE_MUSIC,
-        }
-
-        if action == 'source_select':
-            await query.edit_message_text("💿 Выберите источник для поиска:", reply_markup=get_source_keyboard())
-        elif action in source_map:
-            self.state.source = source_map[action]
-            status_text = await self._get_status_text()
-            await query.edit_message_text(
-                f"✅ Источник изменен на: **{self.state.source.value}**\n\n{status_text}",
-                reply_markup=get_main_keyboard(),
-                parse_mode=ParseMode.MARKDOWN
-            )
+        search_msg = await update.message.reply_text(f"📚 Ищу аудиокнигу: `{query}`...", parse_mode=ParseMode.MARKDOWN)
+        result = await self.youtube.download_long(f"{query} аудиокнига")
         
-        elif action == 'menu_refresh':
-            try:
-                status_text = await self._get_status_text()
-                await query.edit_message_text(status_text, reply_markup=get_main_keyboard(), parse_mode=ParseMode.MARKDOWN)
-            except BadRequest:  # Сообщение не изменилось
-                pass
-        
-        elif action.startswith("radio_") or action == "next_track":
-            if not is_admin(update):
-                await query.answer("⛔ Доступно только администраторам.", show_alert=True)
-                return
-
-            if action == "radio_on":
-                await self.radio.start(chat_id)
-                await query.edit_message_text("✅ Радио включено.")
-            elif action == "radio_off":
-                await self.radio.stop()
-                await query.edit_message_text("✅ Радио выключено.")
-            elif action == "next_track":
-                await self.radio.skip()
-                await query.answer("⏭️ Пропускаю трек...")
-
+        if result.success:
+            await self._send_audio(context, update.effective_chat.id, search_msg, result)
+        else:
+            await search_msg.edit_text(f"❌ Не удалось найти `{query}`. {result.error}", parse_mode=ParseMode.MARKDOWN)
+    
     async def handle_status(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         status_text = await self._get_status_text()
         await update.message.reply_text(status_text, parse_mode=ParseMode.MARKDOWN)
 
-    async def handle_help(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        help_text = (
-            "**ℹ️ Справка по командам**\n\n"
-            "*/play, /p* <название> - Поиск и загрузка трека.\n\n"
-            "*/audiobook, /ab* <название> - Поиск аудиокниги.\n\n"
-            "*/radio <on/off>* - Включить или выключить радио (только для админов).\n\n"
-            "*/source, /src* - Выбрать источник поиска (YouTube, YouTube Music).\n\n"
-            "*/status, /stat* - Показать текущий статус бота.\n\n"
-            "*/menu* - Показать главное меню.\n\n"
-            "*/help* - Показать это сообщение."
-        )
-        await update.message.reply_text(help_text, parse_mode=ParseMode.MARKDOWN)
+    # --- Обработчики колбэков и событий ---
+
+    async def handle_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        query = update.callback_query
+        await query.answer()
+        
+        action = query.data
+        user_id = update.effective_user.id
+        is_user_admin = is_admin(user_id)
+        
+        try:
+            # Общие действия
+            if action == 'menu_main':
+                status_text = await self._get_status_text()
+                await query.edit_message_text(
+                    status_text,
+                    reply_markup=get_main_menu_keyboard(is_user_admin),
+                    parse_mode=ParseMode.MARKDOWN
+                )
+            
+            elif action == 'menu_refresh':
+                status_text = await self._get_status_text()
+                await query.edit_message_text(
+                    status_text,
+                    reply_markup=query.message.reply_markup, # Оставляем текущую клавиатуру
+                    parse_mode=ParseMode.MARKDOWN
+                )
+
+            # Админ-действия
+            elif action.startswith('admin_') or action.startswith('radio_'):
+                if not is_user_admin:
+                    await query.answer("⛔ Доступно только администраторам.", show_alert=True)
+                    return
+
+                if action == 'admin_panel':
+                    status_text = await self._get_status_text()
+                    await query.edit_message_text(
+                        f"👑 **Админ-панель**\n\n{status_text}",
+                        reply_markup=get_admin_panel_keyboard(self.state.radio.is_on),
+                        parse_mode=ParseMode.MARKDOWN,
+                    )
+                elif action == "radio_on":
+                    await self.radio.start(update.effective_chat.id)
+                    await query.answer("✅ Радио включено.")
+                elif action == "radio_off":
+                    await self.radio.stop()
+                    await query.answer("✅ Радио выключено.")
+                elif action == "radio_skip":
+                    await self.radio.skip()
+                    await query.answer("⏭️ Пропускаю трек...")
+                
+                # Обновляем админ-панель после действия
+                if query.message.text and "Админ-панель" in query.message.text:
+                    status_text = await self._get_status_text()
+                    await query.edit_message_text(
+                        f"👑 **Админ-панель**\n\n{status_text}",
+                        reply_markup=get_admin_panel_keyboard(self.state.radio.is_on),
+                        parse_mode=ParseMode.MARKDOWN,
+                    )
+
+        except BadRequest as e:
+            if "Message is not modified" in str(e):
+                await query.answer("🔄 Статус не изменился.")
+            else:
+                logger.warning(f"Ошибка BadRequest в колбэке: {e}")
+        except Exception as e:
+            logger.error(f"Ошибка в handle_callback: {e}", exc_info=True)
+
+    async def handle_chat_member(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if not update.my_chat_member: return
+        
+        chat, old_status, new_status = update.effective_chat, update.my_chat_member.old_chat_member.status, update.my_chat_member.new_chat_member.status
+        
+        if old_status == ChatMemberStatus.LEFT and new_status in [ChatMemberStatus.MEMBER, ChatMemberStatus.ADMINISTRATOR]:
+            logger.info(f"Бот добавлен в {chat.type}: {chat.title or chat.username} (ID: {chat.id})")
+            await self.show_help(update, context) # Показываем приветствие-справку
+        elif new_status == ChatMemberStatus.LEFT:
+            logger.info(f"Бот удален из {chat.type}: {chat.title or chat.username} (ID: {chat.id})")
+            await self.radio.stop_for_chat(chat.id) # Останавливаем радио для этого чата
+
+    async def handle_unknown_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if update.message and update.message.text:
+            command = update.message.text.split()[0]
+            logger.warning(f"⚠️ Неизвестная команда: {command} от {update.effective_user.id}")
+
+    # --- Вспомогательные методы ---
 
     async def _get_status_text(self) -> str:
         radio_status = '🟢 Включено' if self.state.radio.is_on else '🔴 Выключено'
         if self.state.radio.is_on and self.state.radio.current_genre:
             radio_status += f" (жанр: *{self.state.radio.current_genre}*)"
 
+        sys_status = "• `psutil` не установлен, системная инфо недоступна."
         try:
             import psutil
-            cpu = psutil.cpu_percent()
-            mem = psutil.virtual_memory().percent
+            cpu, mem = psutil.cpu_percent(), psutil.virtual_memory().percent
             sys_status = f"• CPU: `{cpu:.1f}%`\n• RAM: `{mem:.1f}%`"
         except (ImportError, FileNotFoundError):
-            sys_status = "• `psutil` не установлен, системная информация недоступна."
+            pass
 
         return (
-            f"**⚙️ Статус Бота**\n\n"
+            f"**📊 Статус Бота**\n\n"
             f"*Система:*\n{sys_status}\n\n"
-            f"*Бот:*\n"
-            f"• Источник: `{self.state.source.value}`\n"
-            f"• Радио: {radio_status}"
+            f"*Радио:*\n• Статус: {radio_status}"
         )
 
     async def _send_audio(self, context: ContextTypes.DEFAULT_TYPE, chat_id: int, search_msg: Message, result: DownloadResult):
-        """Отправляет аудиофайл и удаляет временные файлы."""
-        file_size_mb = 0
         try:
-            # Проверяем размер файла перед отправкой
-            if os.path.exists(result.file_path):
-                file_size_mb = os.path.getsize(result.file_path) / (1024 * 1024)
-                if file_size_mb > 50:  # Telegram лимит ~50MB
-                    await search_msg.edit_text(
-                        f"❌ Файл слишком большой ({file_size_mb:.1f} MB). "
-                        f"Максимальный размер: 50 MB.",
-                        parse_mode=ParseMode.MARKDOWN
-                    )
-                    return
+            file_path = result.file_path
+            if not os.path.exists(file_path):
+                 await search_msg.edit_text("❌ Ошибка: загруженный файл не найден.")
+                 return
+
+            file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
+            if file_size_mb > 49.5:
+                await search_msg.edit_text(f"❌ Файл слишком большой ({file_size_mb:.1f} МБ). Лимит Telegram ~50 МБ.")
+                return
             
-            with open(result.file_path, "rb") as audio:
+            await search_msg.edit_text("📤 Отправляю файл...")
+            with open(file_path, "rb") as audio:
                 caption = f"✅ `{result.track_info.display_name}`"
                 await context.bot.send_audio(
                     chat_id=chat_id,
@@ -343,17 +288,15 @@ class BotHandlers:
                     parse_mode=ParseMode.MARKDOWN,
                 )
             await search_msg.delete()
-        except Forbidden:
-            logger.warning(f"Не удалось отправить аудио в чат {chat_id}: бот заблокирован или не имеет прав.")
-            await search_msg.edit_text("❌ Ошибка: Не могу отправить аудио. Возможно, бот заблокирован или у него нет прав на отправку файлов.")
-        except BadRequest as e:
-            logger.error(f"BadRequest при отправке аудио в чат {chat_id}: {e}")
-            error_msg = str(e) if hasattr(e, '__str__') else "Неизвестная ошибка Telegram"
-            await search_msg.edit_text(f"❌ Ошибка Telegram: {error_msg}")
+        except Exception as e:
+            logger.error(f"Ошибка при отправке аудио в чат {chat_id}: {e}", exc_info=True)
+            error_text = f"❌ Произошла ошибка при отправке файла: {e}"
+            if "Forbidden" in str(e):
+                error_text = "❌ Ошибка: Не могу отправить аудио. Возможно, бот заблокирован или у него нет прав."
+            await search_msg.edit_text(error_text)
         finally:
             if result.file_path and os.path.exists(result.file_path):
                 try:
                     os.remove(result.file_path)
                 except OSError as e:
                     logger.error(f"Не удалось удалить файл {result.file_path}: {e}")
-
