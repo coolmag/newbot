@@ -80,65 +80,71 @@ class RadioService:
                     logger.error(f"Не удалось удалить радио-файл {result.file_path}: {e}")
 
 
+    async def _fetch_playlist(self):
+        """
+        Запрашивает новый плейлист с треками и сохраняет его в состоянии.
+        """
+        logger.info("[Радио] Обновление плейлиста...")
+        
+        # Выбираем случайный жанр для плейлиста
+        genre = random.choice(settings.RADIO_GENRES)
+        self.state.radio.current_genre = genre
+        
+        # Используем метод search для получения списка треков
+        playlist = await self.downloader.search(genre, limit=30)
+        
+        if playlist:
+            random.shuffle(playlist) # Перемешиваем плейлист
+            self.state.radio.playlist = playlist
+            logger.info(f"[Радио] Плейлист обновлен. {len(playlist)} треков в жанре '{genre}'.")
+        else:
+            logger.warning(f"[Радио] Не удалось получить плейлист для жанра '{genre}'.")
+            self.state.radio.playlist = []
+
     async def _radio_loop(self, chat_id: int):
         """
-        Основной цикл радио: выбирает жанр, скачивает трек, отправляет в чат
+        Основной цикл радио: берет трек из плейлиста, скачивает, отправляет
         и ждет перед повторением.
         """
         logger.info(f"▶️ Радио-цикл запущен для чата {chat_id}.")
-        await asyncio.sleep(2)  # Небольшая задержка перед первым треком
+        await asyncio.sleep(2)
 
         status_message = None
         while self.state.radio.is_on:
-            download_successful = False
-            result: Optional[DownloadResult] = None
             try:
-                # 1. Выбираем случайный жанр
-                genre = random.choice(settings.RADIO_GENRES)
-                self.state.radio.current_genre = genre
-                logger.info(f"[Радио] Выбран жанр: '{genre}' для чата {chat_id}.")
+                # 1. Проверяем и при необходимости обновляем плейлист
+                if not self.state.radio.playlist:
+                    if status_message:
+                        await status_message.edit_text("🎵 Обновляю плейлист радио...")
+                    else:
+                        status_message = await self.bot.send_message(chat_id, "🎵 Обновляю плейлист радио...")
+                    
+                    await self._fetch_playlist()
+                    
+                    if not self.state.radio.playlist:
+                        if status_message:
+                            await status_message.edit_text("😔 Не удалось обновить плейлист. Повторю через 1 минуту.")
+                        await asyncio.sleep(60)
+                        continue
+
+                # 2. Берем следующий трек из плейлиста
+                track_to_play = self.state.radio.playlist.pop(0)
                 
                 if status_message:
-                    await status_message.edit_text(f"🎵 Ищу трек для радио (жанр: {genre})...")
+                    await status_message.edit_text(f"🎵 Скачиваю: {track_to_play.display_name}...")
+                
+                # 3. Скачиваем трек
+                if settings.RADIO_SOURCE == "internet_archive" and track_to_play.identifier:
+                    query = track_to_play.identifier
                 else:
-                    status_message = await self.bot.send_message(
-                        chat_id, f"🎵 Ищу трек для радио (жанр: {genre})..."
-                    )
-                
-                for pattern in settings.RADIO_SEARCH_PATTERNS:
-                    search_query = pattern.format(genre=genre)
-                    logger.info(
-                        f"[Радио] Поисковый запрос: '{search_query}' для чата {chat_id}."
-                    )
-                    
-                    # 2. Скачиваем трек
-                    result = await self.downloader.download_with_retry(search_query)
-                    
-                    if result and result.success:
-                        download_successful = True
-                        break # Выход из цикла поиска, если успешно
-                    else:
-                        logger.warning(
-                            f"[Радио] Не удалось скачать трек для запроса '{search_query}': {result.error if result else 'Неизвестная ошибка'}"
-                        )
-                
-                if not download_successful:
-                    logger.warning(f"[Радио] Не удалось найти трек для жанра '{genre}' после всех попыток. Пауза 30с.")
-                    if status_message:
-                        await status_message.edit_text(
-                            f"😔 Не удалось найти трек для жанра '{genre}'. Попробую другой через 30с."
-                        )
-                    await asyncio.sleep(30)
-                    continue # Пропускаем остальную часть цикла и начинаем новую итерацию
-                
-                # Если скачивание успешно, продолжаем
+                    query = f"{track_to_play.artist} - {track_to_play.title}"
+                result = await self.downloader.download_with_retry(query)
+
                 if result and result.success:
                     if status_message:
                         await status_message.edit_text("📤 Отправляю трек...")
                     
-                    # 3. Отправляем трек в чат через специализированный метод
-                    track = result.track_info
-                    caption = f"🎶 *Радио | {genre.capitalize()}*\n\n`{track.display_name}`"
+                    caption = f"🎶 *Радио | {self.state.radio.current_genre.capitalize()}*\n\n`{track_to_play.display_name}`"
                     await self._send_radio_audio(chat_id, result, caption)
                     
                     if status_message:
@@ -152,32 +158,31 @@ class RadioService:
                             timeout=settings.RADIO_COOLDOWN_S
                         )
                     except asyncio.TimeoutError:
-                        # Нормальное завершение ожидания, просто продолжаем
-                        pass
+                        pass # Нормальное завершение
                     
                     if self.state.radio.skip_event.is_set():
                         logger.info("[Радио] Трек пропущен. Запускаю следующий.")
                         self.state.radio.skip_event.clear()
                 else:
-                    # Этот блок должен быть unreachable, так как выше уже есть continue
-                    logger.error(f"[Радио] Непредвиденное состояние: result не успешный после цикла поиска. Пауза 30с.")
-                    await asyncio.sleep(30)
+                    logger.warning(f"Не удалось скачать трек: {track_to_play.display_name}. Пропускаю.")
+                    if status_message:
+                        await status_message.edit_text(f"⚠️ Не удалось скачать трек. Пропускаю...")
 
             except asyncio.CancelledError:
                 logger.info("Радио-цикл отменен.")
                 break
             except TelegramError as e:
                 logger.error(f"Ошибка Telegram в радио-цикле: {e}. Радио остановлено.")
-                await self.stop() # Останавливаем радио при ошибке отправки
+                await self.stop()
             except Exception as e:
                 logger.critical(f"Критическая ошибка в радио-цикле: {e}", exc_info=True)
-                await asyncio.sleep(60) # Делаем большую паузу в случае серьезного сбоя
+                await asyncio.sleep(60)
             finally:
                 if status_message:
                     try:
                         await status_message.delete()
                     except TelegramError:
-                        pass # Сообщение могло быть уже удалено
+                        pass
         
         logger.info(f"⏹️ Радио-цикл завершен для чата {chat_id}.")
         self.state.radio.is_on = False

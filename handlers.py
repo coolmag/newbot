@@ -45,9 +45,13 @@ class BotHandlers:
         self.youtube = YouTubeDownloader()
         self.internet_archive = InternetArchiveDownloader()
         
-        # Принудительно используем InternetArchiveDownloader для радио
-        radio_downloader = self.internet_archive
-        logger.info("✅ Для радио используется Internet Archive.")
+        # Выбираем загрузчик для радио
+        if settings.RADIO_SOURCE.lower() == "internet_archive":
+            radio_downloader = self.internet_archive
+            logger.info("✅ Для радио используется Internet Archive.")
+        else:
+            radio_downloader = self.youtube
+            logger.info("✅ Для радио используется YouTube.")
             
         self.radio = RadioService(self.state, app.bot, radio_downloader)
 

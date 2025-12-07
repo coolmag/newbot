@@ -2,7 +2,7 @@
 import asyncio
 import os
 import glob # Добавляем импорт glob
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 import yt_dlp
 
@@ -93,6 +93,43 @@ class YouTubeDownloader(BaseDownloader):
             None,
             lambda: yt_dlp.YoutubeDL(ydl_opts).process_info(info)
         )
+
+    async def search(self, query: str, limit: int = 30) -> List[TrackInfo]:
+        """
+        Ищет видео на YouTube и возвращает список треков.
+        """
+        logger.info(f"[{self.name}] Поиск плейлиста для '{query}' на YouTube...")
+        
+        try:
+            ydl_opts = self._get_ydl_options()
+            ydl_opts["default_search"] = f"ytsearch{limit}"
+            
+            info = await self._extract_info(query, ydl_opts)
+            
+            entries = info.get('entries', []) if info else []
+            if not entries:
+                logger.warning(f"Не найдено треков для '{query}' на YouTube.")
+                return []
+
+            playlist = []
+            for entry in entries:
+                if not entry:
+                    continue
+                
+                track_info = TrackInfo(
+                    title=entry.get("title", "Unknown Title"),
+                    artist=entry.get("channel") or entry.get("uploader", "Unknown Artist"),
+                    duration=int(entry.get("duration", 0)),
+                    source=Source.YOUTUBE.value,
+                )
+                playlist.append(track_info)
+            
+            logger.info(f"Найдено {len(playlist)} треков для '{query}'.")
+            return playlist
+
+        except Exception as e:
+            logger.error(f"[{self.name}] Непредвиденная ошибка при поиске: {e}", exc_info=True)
+            return []
 
     async def download(self, query: str) -> DownloadResult:
         """

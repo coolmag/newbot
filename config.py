@@ -2,8 +2,7 @@
 import os
 from enum import Enum
 from pathlib import Path
-from typing import List
-from dataclasses import dataclass
+from typing import List, Optional
 
 from dotenv import load_dotenv
 
@@ -28,6 +27,7 @@ class TrackInfo:
     artist: str
     duration: int
     source: str
+    identifier: Optional[str] = None
 
     @property
     def display_name(self) -> str:
