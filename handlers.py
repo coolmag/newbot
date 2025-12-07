@@ -4,8 +4,8 @@ import os
 import sys
 
 from telegram import Update, Message
-from telegram.ext import Application, ContextTypes, CommandHandler, CallbackQueryHandler
-from telegram.constants import ParseMode
+from telegram.ext import Application, ContextTypes, CommandHandler, CallbackQueryHandler, ChatMemberHandler
+from telegram.constants import ParseMode, ChatMemberStatus
 from telegram.error import BadRequest, Forbidden
 
 from config import settings, Source
@@ -61,6 +61,7 @@ class BotHandlers:
             CommandHandler(["status", "stat"], self.handle_status),
             CommandHandler("help", self.handle_help),
             CallbackQueryHandler(self.handle_callback),
+            ChatMemberHandler(self.handle_chat_member, ChatMemberHandler.MY_CHAT_MEMBER),
         ]
         for handler in handlers:
             self.app.add_handler(handler)
@@ -74,6 +75,44 @@ class BotHandlers:
             logger.info("✅ Ресурсы очищены.")
         except Exception as e:
             logger.error(f"⚠️ Ошибка при очистке ресурсов: {e}")
+
+    async def handle_chat_member(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обрабатывает событие добавления/удаления бота в канал/группу."""
+        if not update.my_chat_member:
+            return
+        
+        chat = update.effective_chat
+        old_status = update.my_chat_member.old_chat_member.status
+        new_status = update.my_chat_member.new_chat_member.status
+        
+        # Если бота только что добавили (был LEFT, стал MEMBER или ADMINISTRATOR)
+        if old_status == ChatMemberStatus.LEFT and new_status in [ChatMemberStatus.MEMBER, ChatMemberStatus.ADMINISTRATOR]:
+            logger.info(f"Бот добавлен в {chat.type}: {chat.title or chat.username} (ID: {chat.id})")
+            
+            welcome_text = (
+                "🎵 **Музыкальный бот запущен!**\n\n"
+                "Привет! Я готов помочь вам найти и скачать музыку.\n\n"
+                "**Основные команды:**\n"
+                "• `/play <название>` - Найти и скачать трек\n"
+                "• `/audiobook <название>` - Найти аудиокнигу\n"
+                "• `/menu` - Показать меню\n"
+                "• `/help` - Справка по командам\n\n"
+                "Используйте кнопки ниже для быстрого доступа к функциям."
+            )
+            
+            try:
+                await context.bot.send_message(
+                    chat_id=chat.id,
+                    text=welcome_text,
+                    reply_markup=get_main_keyboard(),
+                    parse_mode=ParseMode.MARKDOWN
+                )
+            except Exception as e:
+                logger.error(f"Не удалось отправить приветствие в чат {chat.id}: {e}")
+        
+        # Если бота удалили
+        elif new_status == ChatMemberStatus.LEFT:
+            logger.info(f"Бот удален из {chat.type}: {chat.title or chat.username} (ID: {chat.id})")
 
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         user = update.effective_user

@@ -71,9 +71,7 @@ class RadioService:
                 if result and result.success:
                     # 3. Отправляем трек в чат
                     track = result.track_info
-                    caption = f"🎶 *Радио | {genre.capitalize()}*
-
-`{track.display_name}`"
+                    caption = f"🎶 *Радио | {genre.capitalize()}*\n\n`{track.display_name}`"
                     
                     with open(result.file_path, 'rb') as audio_file:
                         await self.bot.send_audio(

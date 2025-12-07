@@ -35,7 +35,7 @@ async def main() -> None:
         await app.initialize()
         await app.updater.start_polling(
             drop_pending_updates=True,
-            allowed_updates=["message", "callback_query"],
+            allowed_updates=["message", "callback_query", "my_chat_member"],
         )
 
         logger.info("✅ Бот запущен и готов к работе.")
