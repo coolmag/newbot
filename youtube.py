@@ -201,3 +201,60 @@ class YouTubeDownloader(BaseDownloader):
         """Переопределенный метод для поиска длинного видео."""
         return await self.download(query, is_long=True)
 
+    async def search_playlist(self, query: str) -> list:
+        """Ищет плейлисты и возвращает список глав первого найденного плейлиста."""
+        logger.info(f"[{self.name}] Поиск плейлиста для '{query}'...")
+        ydl_opts = {
+            "extract_flat": True,
+            "default_search": "ytsearch10",
+            "quiet": True,
+            "no_warnings": True,
+            "ignoreerrors": True,
+        }
+        
+        try:
+            info = await self._extract_info(f"{query} плейлист", ydl_opts)
+            
+            if not info or 'entries' not in info:
+                return []
+            
+            # Ищем первый плейлист в результатах
+            for entry in info['entries']:
+                if entry and entry.get('_type') == 'playlist':
+                    playlist_info = await self._extract_info(entry['url'], {"extract_flat": True, "quiet": True})
+                    return playlist_info.get('entries', [])
+            return []
+        except Exception as e:
+            logger.error(f"[{self.name}] Ошибка при поиске плейлиста: {e}", exc_info=True)
+            return []
+
+    async def download_single_video(self, video_id: str) -> DownloadResult:
+        """Скачивает одно видео по его ID."""
+        logger.info(f"[{self.name}] Скачивание видео по ID: {video_id}...")
+        try:
+            ydl_opts = self._get_ydl_options(video_id, is_long=False)
+            ydl_opts['noplaylist'] = True # Убедимся, что скачивается только одно видео
+
+            info = await self._extract_info(f"https://www.youtube.com/watch?v={video_id}", ydl_opts)
+
+            if not info or info.get('id') != video_id:
+                return DownloadResult(success=False, error="Не удалось получить информацию о видео.")
+
+            await self._download_info(info, ydl_opts)
+            
+            expected_path = settings.DOWNLOADS_DIR / f"{video_id}.mp3"
+            if not expected_path.exists():
+                return DownloadResult(success=False, error="Файл не был создан после загрузки.")
+
+            track_info = TrackInfo(
+                title=info.get("title", "Unknown Title"),
+                artist=info.get("channel") or info.get("uploader", "Unknown Artist"),
+                duration=int(info.get("duration", 0)),
+                source=Source.YOUTUBE.value,
+            )
+            
+            return DownloadResult(success=True, file_path=str(expected_path), track_info=track_info)
+
+        except Exception as e:
+            logger.error(f"[{self.name}] Ошибка при скачивании видео по ID: {e}", exc_info=True)
+            return DownloadResult(success=False, error=f"Внутренняя ошибка: {e}")
