@@ -49,6 +49,37 @@ class RadioService:
             self.state.radio.skip_event.set()
             logger.info("⏭️ Получен запрос на пропуск трека.")
 
+    async def _send_radio_audio(self, chat_id: int, result: DownloadResult, caption: str):
+        """Отправляет аудиофайл в чат для радио и удаляет временные файлы."""
+        try:
+            if not os.path.exists(result.file_path):
+                 logger.error(f"Файл радио не найден для отправки: {result.file_path}")
+                 return
+
+            with open(result.file_path, 'rb') as audio_file:
+                await self.bot.send_audio(
+                    chat_id=chat_id,
+                    audio=audio_file,
+                    title=result.track_info.title,
+                    performer=result.track_info.artist,
+                    duration=result.track_info.duration,
+                    caption=caption,
+                    parse_mode=ParseMode.MARKDOWN
+                )
+        except TelegramError as e:
+            logger.error(f"Ошибка Telegram при отправке радио-аудио в чат {chat_id}: {e}")
+            raise # Пробрасываем ошибку выше для обработки в _radio_loop
+        except Exception as e:
+            logger.error(f"Непредвиденная ошибка при отправке радио-аудио {chat_id}: {e}", exc_info=True)
+            raise
+        finally:
+            if result.file_path and os.path.exists(result.file_path):
+                try:
+                    os.remove(result.file_path)
+                except OSError as e:
+                    logger.error(f"Не удалось удалить радио-файл {result.file_path}: {e}")
+
+
     async def _radio_loop(self, chat_id: int):
         """
         Основной цикл радио: выбирает жанр, скачивает трек, отправляет в чат
@@ -74,20 +105,10 @@ class RadioService:
                 result = await self.downloader.download_with_retry(search_query)
 
                 if result and result.success:
-                    # 3. Отправляем трек в чат
+                    # 3. Отправляем трек в чат через специализированный метод
                     track = result.track_info
                     caption = f"🎶 *Радио | {genre.capitalize()}*\n\n`{track.display_name}`"
-                    
-                    with open(result.file_path, 'rb') as audio_file:
-                        await self.bot.send_audio(
-                            chat_id=chat_id,
-                            audio=audio_file,
-                            title=track.title,
-                            performer=track.artist,
-                            duration=track.duration,
-                            caption=caption,
-                            parse_mode=ParseMode.MARKDOWN
-                        )
+                    await self._send_radio_audio(chat_id, result, caption)
                     
                     # 4. Ожидаем кулдаун или событие пропуска
                     try:
@@ -116,12 +137,8 @@ class RadioService:
                 logger.critical(f"Критическая ошибка в радио-цикле: {e}", exc_info=True)
                 await asyncio.sleep(60) # Делаем большую паузу в случае серьезного сбоя
             finally:
-                # 5. Удаляем скачанный файл
-                if result and result.file_path and os.path.exists(result.file_path):
-                    try:
-                        os.remove(result.file_path)
-                    except OSError as e:
-                        logger.error(f"Не удалось удалить радио-файл {result.file_path}: {e}")
+                # 5. Удаляем скачанный файл (уже сделано в _send_radio_audio)
+                pass # Тут не нужно, так как _send_radio_audio уже удалил файл
         
         logger.info(f"⏹️ Радио-цикл завершен для чата {chat_id}.")
         self.state.radio.is_on = False

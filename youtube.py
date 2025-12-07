@@ -210,11 +210,10 @@ class YouTubeDownloader(BaseDownloader):
         logger.info(f"[{self.name}] Поиск плейлиста для '{query}'...")
         ydl_opts = {
             "extract_flat": True,
-            "default_search": "ytsearch50",
+            "default_search": "ytsearch15",
             "quiet": True,
             "no_warnings": True,
             "ignoreerrors": True,
-            "verbose": True, # Временно для отладки
         }
         
         try:
