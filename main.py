@@ -20,6 +20,7 @@ async def set_bot_commands(app: Application):
         BotCommand("admin", "👑 Открыть панель администратора"),
         BotCommand("refresh", "🔄 Обновить плейлист радио"),
         BotCommand("debug", "🐛 Техническая информация"),
+        BotCommand("youtube_test", "🧪 Тестирование YouTube"),
     ]
     await app.bot.set_my_commands(commands)
     logger.info("✅ Команды бота в меню обновлены.")

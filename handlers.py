@@ -69,6 +69,7 @@ class BotHandlers:
             CommandHandler("refresh", self.radio_refresh),
             CommandHandler("test", self.test_search),
             CommandHandler("debug", self.debug_info),
+            CommandHandler("youtube_test", self.youtube_test),
             CallbackQueryHandler(self.handle_callback),
             ChatMemberHandler(self.handle_chat_member, ChatMemberHandler.MY_CHAT_MEMBER),
             MessageHandler(filters.COMMAND, self.handle_unknown_command),
@@ -104,7 +105,7 @@ class BotHandlers:
             help_text += (
                 "**👑 Для администраторов:**\n"
                 "🕹️ `/admin` - Открыть панель управления радио.\n"
-                "🧪 `/test [запрос]` - Тестирование поиска.\n"
+                "🧪 `/youtube_test` - Тестирование YouTube поиска.\n"
             )
         help_text += "\nПросто отправьте команду, и я начну работу!"
 
@@ -183,47 +184,38 @@ class BotHandlers:
         else:
             await update.message.reply_text("❌ Не удалось обновить плейлист.")
 
-    async def test_search(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Команда для тестирования поиска."""
-        query = " ".join(context.args) if context.args else "lofi hip hop"
+    async def youtube_test(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Тестирование YouTube поиска."""
         user_id = update.effective_user.id
-        
         if not is_admin(user_id):
             await update.message.reply_text("⛔ Доступно только администраторам.")
             return
         
-        test_msg = await update.message.reply_text(f"🔍 Тестовый поиск: {query}")
+        query = " ".join(context.args) if context.args else "music"
+        
+        test_msg = await update.message.reply_text(f"🧪 Тестирую YouTube поиск для '{query}'...")
         
         start_time = time.time()
-        result = await self.youtube.search(query, limit=5)
+        results = await self.youtube.search(query, limit=5)
         search_time = time.time() - start_time
         
-        if result:
-            response = f"✅ Найдено {len(result)} треков за {search_time:.1f}с:\n\n"
-            for i, track in enumerate(result[:5], 1):
+        if results:
+            response = f"✅ YouTube поиск работает!\n"
+            response += f"• Найдено треков: {len(results)}\n"
+            response += f"• Время поиска: {search_time:.1f}с\n\n"
+            response += f"Примеры:\n"
+            
+            for i, track in enumerate(results[:3], 1):
                 mins = track.duration // 60
                 secs = track.duration % 60
                 response += f"{i}. {track.display_name} ({mins}:{secs:02d})\n"
-            
-            # Тест скачивания первого трека
-            if result:
-                response += f"\n⏬ Тест скачивания..."
-                await test_msg.edit_text(response)
-                
-                start_time = time.time()
-                dl_result = await self.youtube.download_with_retry(f"{result[0].artist} - {result[0].title}")
-                dl_time = time.time() - start_time
-                
-                if dl_result and dl_result.success:
-                    response += f"\n✅ Скачивание успешно за {dl_time:.1f}с"
-                    if dl_result.file_path:
-                        file_size = os.path.getsize(dl_result.file_path) / (1024 * 1024)
-                        response += f" ({file_size:.1f} МБ)"
-                else:
-                    error = dl_result.error if dl_result else "Неизвестная ошибка"
-                    response += f"\n❌ Ошибка скачивания: {error}"
         else:
-            response = f"❌ Не найдено треков для '{query}' за {search_time:.1f}с"
+            response = f"❌ YouTube поиск не работает для '{query}'\n"
+            response += f"• Время поиска: {search_time:.1f}с\n"
+            response += f"• Возможные причины:\n"
+            response += f"  - Проблема с сетью\n"
+            response += f"  - Блокировка YouTube\n"
+            response += f"  - Неверные настройки yt-dlp\n"
         
         await test_msg.edit_text(response)
 
@@ -256,7 +248,7 @@ class BotHandlers:
         # Собираем статистику
         downloads_count = 0
         if downloads_dir_exists:
-            downloads_count = len([f for f in os.listdir(settings.DOWNLOADS_DIR) if f.endswith('.mp3')])
+            downloads_count = len([f for f in os.listdir(settings.DOWNLOADS_DIR) if f.endswith(('.mp3', '.part'))])
         
         debug_text = (
             f"🐛 **Техническая информация:**\n\n"
@@ -269,7 +261,6 @@ class BotHandlers:
             f"• **Треков в плейлисте:** {len(self.state.radio.playlist)}\n"
             f"• **Текущий жанр:** {self.state.radio.current_genre or 'Не установлен'}\n"
             f"• **Источник радио:** {settings.RADIO_SOURCE}\n"
-            f"• **Количество жанров:** {len(settings.RADIO_GENRES)}\n"
             f"• **Таймаут загрузки:** {settings.DOWNLOAD_TIMEOUT_S}с\n"
             f"• **Задержка радио:** {settings.RADIO_COOLDOWN_S}с\n"
         )

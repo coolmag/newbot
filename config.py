@@ -62,38 +62,17 @@ class Settings:
 
     # --- Настройки загрузчика ---
     MAX_QUERY_LENGTH: int = 150
-    MAX_FILE_SIZE_MB: int = 30  # Уменьшено с 50 для радио
-    DOWNLOAD_TIMEOUT_S: int = 30  # Уменьшено с 180 для радио
+    MAX_FILE_SIZE_MB: int = 50  # Восстановлено до 50 МБ
+    DOWNLOAD_TIMEOUT_S: int = 60  # Увеличено до 60 секунд
 
     # --- Настройки повторных попыток ---
-    MAX_RETRIES: int = 2
-    RETRY_DELAY_S: float = 1.5
+    MAX_RETRIES: int = 3
+    RETRY_DELAY_S: float = 2
 
     # --- Настройки радио ---
     RADIO_SOURCE: str = "youtube"
-    RADIO_COOLDOWN_S: int = 15  # Уменьшено с 240
-    RADIO_MAX_DURATION_S: int = int(os.getenv("RADIO_MAX_DURATION_S", 600))  # 10 минут
-    
-    # Простые жанры без дублирования "music"
-    RADIO_GENRES: List[str] = [
-        "lofi hip hop",
-        "synthwave",
-        "chillhop",
-        "jazz",
-        "ambient",
-        "electronic",
-        "retrowave",
-        "cyberpunk",
-        "indie pop",
-        "rock"
-    ]
-    
-    # Упрощенные шаблоны поиска
-    RADIO_SEARCH_PATTERNS: List[str] = [
-        "{genre}",
-        "{genre} song",
-        "{genre} music",
-    ]
+    RADIO_COOLDOWN_S: int = 10  # Уменьшено до 10 секунд
+    RADIO_MAX_DURATION_S: int = int(os.getenv("RADIO_MAX_DURATION_S", 1200))  # 20 минут
 
     # --- Настройки кэша ---
     CACHE_TTL_DAYS: int = 7
