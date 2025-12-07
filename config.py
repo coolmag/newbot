@@ -15,6 +15,7 @@ class Source(str, Enum):
     """Перечисление доступных источников музыки."""
     YOUTUBE = "YouTube"
     YOUTUBE_MUSIC = "YouTube Music"
+    INTERNET_ARCHIVE = "Internet Archive"
 
 
 @dataclass(frozen=True)
@@ -69,6 +70,7 @@ class Settings:
     RETRY_DELAY_S: float = 1.5
 
     # --- Настройки радио ---
+    RADIO_SOURCE: str = os.getenv("RADIO_SOURCE", "youtube") # youtube или internet_archive
     RADIO_COOLDOWN_S: int = 240  # 4 минуты
     RADIO_GENRES: List[str] = [
         "lofi hip hop",
@@ -78,6 +80,17 @@ class Settings:
         "future garage",
         "downtempo",
         "nu-jazz",
+    ]
+    RADIO_SEARCH_PATTERNS: List[str] = [
+        "{genre} music",
+        "{genre} instrumental",
+        "{genre} ambient mix",
+        "{genre} chill beats",
+        "{genre} playlist",
+        "{genre} full album",
+        "{genre} official audio",
+        "{genre} topic",
+        "{genre}", # Generic search as a last resort
     ]
 
     # --- Настройки кэша ---

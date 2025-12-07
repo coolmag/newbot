@@ -11,14 +11,14 @@ from telegram.error import TelegramError
 from logger import logger
 from config import settings
 from states import BotState
-from base import BaseDownloader, DownloadResult
+from base import BaseDownloader, DownloadResult # Изменяем импорт
 
 
 class RadioService:
     """
     Сервис для управления фоновым воспроизведением музыки ("радио").
     """
-    def __init__(self, state: BotState, bot: Bot, downloader: BaseDownloader):
+    def __init__(self, state: BotState, bot: Bot, downloader: BaseDownloader): # Изменяем тип
         self.state = state
         self.bot = bot
         self.downloader = downloader
@@ -89,21 +89,37 @@ class RadioService:
         await asyncio.sleep(2)  # Небольшая задержка перед первым треком
 
         while self.state.radio.is_on:
+            download_successful = False
             result: Optional[DownloadResult] = None
             try:
-                # 1. Выбираем случайный жанр и создаем более точный запрос
+                # 1. Выбираем случайный жанр
                 genre = random.choice(settings.RADIO_GENRES)
                 self.state.radio.current_genre = genre
+                logger.info(f"[Радио] Выбран жанр: '{genre}' для чата {chat_id}.")
                 
-                # Добавляем уточнения, чтобы избежать длинных миксов
-                clarifications = ["audio", "topic", "single track", "official audio"]
-                search_query = f"{genre} {random.choice(clarifications)}"
+                for pattern in settings.RADIO_SEARCH_PATTERNS:
+                    search_query = pattern.format(genre=genre)
+                    logger.info(
+                        f"[Радио] Поисковый запрос: '{search_query}' для чата {chat_id}."
+                    )
+                    
+                    # 2. Скачиваем трек
+                    result = await self.downloader.download_with_retry(search_query)
+                    
+                    if result and result.success:
+                        download_successful = True
+                        break # Выход из цикла поиска, если успешно
+                    else:
+                        logger.warning(
+                            f"[Радио] Не удалось скачать трек для запроса '{search_query}': {result.error if result else 'Неизвестная ошибка'}"
+                        )
                 
-                logger.info(f"[Радио] Выбран жанр: '{genre}', поисковый запрос: '{search_query}' для чата {chat_id}.")
+                if not download_successful:
+                    logger.warning(f"[Радио] Не удалось найти трек для жанра '{genre}' после всех попыток. Пауза 30с.")
+                    await asyncio.sleep(30)
+                    continue # Пропускаем остальную часть цикла и начинаем новую итерацию
                 
-                # 2. Скачиваем трек
-                result = await self.downloader.download_with_retry(search_query)
-
+                # Если скачивание успешно, продолжаем
                 if result and result.success:
                     # 3. Отправляем трек в чат через специализированный метод
                     track = result.track_info
@@ -124,7 +140,8 @@ class RadioService:
                         logger.info("[Радио] Трек пропущен. Запускаю следующий.")
                         self.state.radio.skip_event.clear()
                 else:
-                    logger.warning(f"[Радио] Не удалось скачать трек для жанра '{genre}'. Пауза 30с.")
+                    # Этот блок должен быть unreachable, так как выше уже есть continue
+                    logger.error(f"[Радио] Непредвиденное состояние: result не успешный после цикла поиска. Пауза 30с.")
                     await asyncio.sleep(30)
 
             except asyncio.CancelledError:

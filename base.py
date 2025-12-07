@@ -73,4 +73,3 @@ class BaseDownloader:
         """
         return await self.download_with_retry(query)
 
-

@@ -1,6 +1,7 @@
 
 import asyncio
 import os
+import glob # Добавляем импорт glob
 from typing import Any, Dict
 
 import yt_dlp
@@ -127,10 +128,26 @@ class YouTubeDownloader(BaseDownloader):
             )
             
             video_id = video_info["id"]
-            expected_path = settings.DOWNLOADS_DIR / f"{video_id}.mp3"
             
-            if not expected_path.exists():
+            # Use glob to find the actual downloaded file, which should be .mp3
+            downloaded_files = glob.glob(str(settings.DOWNLOADS_DIR / f"{video_id}.mp3"))
+            
+            if not downloaded_files:
+                # If .mp3 not found, try finding any file with the video_id prefix
+                downloaded_files = glob.glob(str(settings.DOWNLOADS_DIR / f"{video_id}.*"))
+                if downloaded_files:
+                    logger.warning(f"Найден файл {downloaded_files[0]} но он не .mp3. Возможно, проблема с FFmpeg.")
+                else:
+                    return DownloadResult(success=False, error="Файл не был создан после загрузки.")
+            
+            actual_file_path = downloaded_files[0]
+            
+            # Ensure the file exists
+            if not os.path.exists(actual_file_path):
                 return DownloadResult(success=False, error="Файл не был создан после загрузки.")
+            
+            # Use actual_file_path for the result
+            expected_path = actual_file_path
 
             track_info = TrackInfo(
                 title=video_info.get("title", "Unknown Title"),

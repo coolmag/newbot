@@ -143,4 +143,3 @@ class CacheManager:
         except Exception as e:
             logger.warning(f"⚠️ Ошибка при записи в кэш: {e}")
 
-

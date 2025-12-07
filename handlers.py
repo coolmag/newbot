@@ -11,6 +11,7 @@ from config import settings
 from keyboards import get_main_menu_keyboard, get_admin_panel_keyboard
 from states import BotState
 from youtube import YouTubeDownloader
+from internet_archive_downloader import InternetArchiveDownloader # Добавляем импорт
 from base import DownloadResult
 from radio import RadioService
 from logger import logger
@@ -42,7 +43,17 @@ class BotHandlers:
         self.app = app
         self.state = BotState()
         self.youtube = YouTubeDownloader()
-        self.radio = RadioService(self.state, app.bot, self.youtube)
+        self.internet_archive = InternetArchiveDownloader()
+        
+        # Выбираем загрузчик для радио
+        if settings.RADIO_SOURCE.lower() == "internet_archive":
+            radio_downloader = self.internet_archive
+            logger.info("✅ Для радио используется Internet Archive.")
+        else:
+            radio_downloader = self.youtube
+            logger.info("✅ Для радио используется YouTube.")
+            
+        self.radio = RadioService(self.state, app.bot, radio_downloader)
 
     async def register(self):
         """Регистрирует все обработчики в приложении."""
