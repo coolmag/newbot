@@ -48,7 +48,7 @@ class YouTubeDownloader(BaseDownloader):
         user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         
         options = {
-            "format": "bestaudio[filesize<" + str(settings.MAX_FILE_SIZE_MB * 1024 * 1024) + "][ext=m4a]/bestaudio[filesize<" + str(settings.MAX_FILE_SIZE_MB * 1024 * 1024) + "][ext=opus]/bestaudio[filesize<" + str(settings.MAX_FILE_SIZE_MB * 1024 * 1024) + "][ext=webm]/bestaudio[filesize<" + str(settings.MAX_FILE_SIZE_MB * 1024 * 1024) + "]",
+            "format": "bestaudio/best",
             "postprocessors": [{
                 "key": "FFmpegExtractAudio",
                 "preferredcodec": "mp3",
@@ -67,21 +67,21 @@ class YouTubeDownloader(BaseDownloader):
             # Опции для обхода блокировки
             "user_agent": user_agent,
             "referer": "https://www.youtube.com/",
-            "extractor_args": {
-                "youtube": {
-                    "player_client": ["android", "web"],  # Пробуем разные клиенты
-                    "player_skip": ["webpage", "configs"],
-                }
-            },
+            # "extractor_args": {
+            #     "youtube": {
+            #         "player_client": ["android", "web"],
+            #         "player_skip": ["webpage", "configs"],
+            #     }
+            # },
             # Дополнительные опции
             "no_check_certificate": False,
             "prefer_insecure": False,
         }
 
         # Используем cookies, если они указаны
-        if settings.COOKIES_FILE and os.path.exists(settings.COOKIES_FILE):
-            options["cookiefile"] = settings.COOKIES_FILE
-            logger.info(f"Используются cookies из файла: {settings.COOKIES_FILE}")
+        # if settings.COOKIES_FILE and os.path.exists(settings.COOKIES_FILE):
+        #     options["cookiefile"] = settings.COOKIES_FILE
+        #     logger.info(f"Используются cookies из файла: {settings.COOKIES_FILE}")
         
         # Для аудиокниг ищем больше результатов и берем самый длинный
         if is_long:
