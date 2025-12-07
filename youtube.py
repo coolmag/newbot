@@ -74,6 +74,7 @@ class YouTubeDownloader(BaseDownloader):
             },
             "no_check_certificate": False,
             "prefer_insecure": False,
+            'match_filter': yt_dlp.utils.match_filter_func(f"duration < {settings.RADIO_MAX_DURATION_S}"),
         }
         return options
 
@@ -93,69 +94,70 @@ class YouTubeDownloader(BaseDownloader):
             lambda: yt_dlp.YoutubeDL(ydl_opts).process_info(info)
         )
 
-    async def search(self, query: str, limit: int = 10) -> List[TrackInfo]:
+    async def search(self, query: str, limit: int = 30) -> List[TrackInfo]:
         """
-        Ищет плейлист на YouTube и возвращает список треков из него.
+        Ищет видео на YouTube и возвращает список треков.
         """
         logger.info(f"[{self.name}] Поиск плейлиста для '{query}' на YouTube...")
         
         try:
             ydl_opts = self._get_ydl_options()
-            ydl_opts["default_search"] = "ytsearch" # Ищем несколько результатов
-            ydl_opts["noplaylist"] = False
-            ydl_opts["extract_flat"] = True # Более стандартный способ
             
-            # Ищем плейлист, а не просто видео
-            info = await self._extract_info(f"\"{query}\" playlist", ydl_opts)
+            search_query = f"{query} music song"
+            ydl_opts["default_search"] = f"ytsearch{limit*2}:{search_query}"
+            
+            ydl_opts['match_filter'] = yt_dlp.utils.match_filter_func(
+                f"duration > 60 & duration < 600 & !is_live & !playlist"
+            )
+            
+            info = await self._extract_info(search_query, ydl_opts)
             
             entries = info.get('entries', []) if info else []
             if not entries:
-                logger.warning(f"Не найдено плейлистов для '{query}' на YouTube.")
-                return []
-
-            # Ищем первый плейлист в результатах
-            playlist_entry = None
-            for entry in entries:
-                if entry and entry.get("ie_key") == "YoutubePlaylist":
-                    playlist_entry = entry
-                    break
-            
-            if not playlist_entry:
-                logger.warning(f"Не найдено плейлистов в результатах поиска для '{query}'.")
-                return []
-
-            # Теперь получаем треки из этого плейлиста
-            ydl_opts_playlist = self._get_ydl_options()
-            ydl_opts_playlist["noplaylist"] = False
-            ydl_opts_playlist["extract_flat"] = "in_playlist"
-            ydl_opts_playlist["playlistend"] = limit
-            
-            playlist_info = await self._extract_info(playlist_entry["url"], ydl_opts_playlist)
-            
-            playlist_entries = playlist_info.get('entries', []) if playlist_info else []
-            if not playlist_entries:
-                logger.warning(f"Плейлист '{playlist_entry['title']}' пуст.")
+                logger.warning(f"Не найдено треков для '{query}' на YouTube.")
                 return []
 
             playlist = []
-            for track_entry in playlist_entries:
-                if not track_entry:
+            seen_ids = set()
+            
+            for entry in entries:
+                if not entry:
+                    continue
+                
+                video_id = entry.get("id")
+                if not video_id or video_id in seen_ids:
+                    continue
+                    
+                title = entry.get("title", "").lower()
+                if any(word in title for word in ["mix", "playlist", "compilation", "album", "full album", "live concert"]):
+                    continue
+                
+                duration = int(entry.get("duration", 0))
+                if duration < 60 or duration > 600:
+                    continue
+                
+                artist = entry.get("channel") or entry.get("uploader", "Unknown Artist")
+                if artist == "Unknown Artist" or "Topic" in artist:
                     continue
                 
                 track_info = TrackInfo(
-                    title=track_entry.get("title", "Unknown Title"),
-                    artist="Unknown Artist",
-                    duration=int(track_entry.get("duration", 0)),
+                    title=entry.get("title", "Unknown Title"),
+                    artist=artist,
+                    duration=duration,
                     source=Source.YOUTUBE.value,
-                    identifier=track_entry.get("id"),
+                    identifier=video_id
                 )
                 playlist.append(track_info)
+                seen_ids.add(video_id)
+                
+                if len(playlist) >= limit:
+                    break
             
-            logger.info(f"Найдено {len(playlist)} треков в плейлисте для '{query}'.")
+            logger.info(f"Найдено {len(playlist)} треков для '{query}'.")
             return playlist
 
         except Exception as e:
-            logger.error(f"[{self.name}] Непредвиденная ошибка при поиске плейлиста: {e}", exc_info=True)
+            logger.error(f"[{self.name}] Непредвиденная ошибка при поиске: {e}", exc_info=True)
             return []
 
     async def download(self, query: str) -> DownloadResult:

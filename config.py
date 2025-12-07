@@ -75,13 +75,13 @@ class Settings:
     RADIO_COOLDOWN_S: int = 240  # 4 минуты
     RADIO_MAX_DURATION_S: int = int(os.getenv("RADIO_MAX_DURATION_S", 900)) # 15 минут
     RADIO_GENRES: List[str] = [
-        "lofi hip hop",
-        "chillstep",
-        "synthwave",
-        "ambient music",
-        "future garage",
-        "downtempo",
-        "nu-jazz",
+        "jazz",
+        "rock", 
+        "blues",
+        "classical",
+        "electronic",
+        "lofi",
+        "chillout"
     ]
     RADIO_SEARCH_PATTERNS: List[str] = [
         "{genre} music",
