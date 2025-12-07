@@ -2,11 +2,27 @@
 import asyncio
 import sys
 
+from telegram import BotCommand
 from telegram.ext import Application
 
 from handlers import BotHandlers
 from config import settings
 from logger import logger
+
+
+async def set_bot_commands(app: Application):
+    """Устанавливает список команд, видимых в меню Telegram."""
+    commands = [
+        BotCommand("start", "🚀 Запустить бота и показать справку"),
+        BotCommand("help", "ℹ️ Показать справку"),
+        BotCommand("play", "🎵 Найти и скачать трек"),
+        BotCommand("audiobook", "📚 Найти и скачать аудиокнигу"),
+        BotCommand("menu", "🎛️ Показать главное меню"),
+        BotCommand("status", "📊 Показать статус бота"),
+        BotCommand("admin", "👑 Открыть панель администратора"),
+    ]
+    await app.bot.set_my_commands(commands)
+    logger.info("✅ Команды бота в меню обновлены.")
 
 
 async def main() -> None:
@@ -27,6 +43,9 @@ async def main() -> None:
     
     try:
         app = Application.builder().token(settings.BOT_TOKEN).build()
+
+        # Устанавливаем команды
+        await set_bot_commands(app)
 
         handlers_instance = BotHandlers(app)
         await handlers_instance.register()

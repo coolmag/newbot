@@ -60,13 +60,18 @@ class RadioService:
         while self.state.radio.is_on:
             result: Optional[DownloadResult] = None
             try:
-                # 1. Выбираем случайный жанр
+                # 1. Выбираем случайный жанр и создаем более точный запрос
                 genre = random.choice(settings.RADIO_GENRES)
                 self.state.radio.current_genre = genre
-                logger.info(f"[Радио] Выбран жанр: '{genre}' для чата {chat_id}.")
+                
+                # Добавляем уточнения, чтобы избежать длинных миксов
+                clarifications = ["audio", "topic", "single track", "official audio"]
+                search_query = f"{genre} {random.choice(clarifications)}"
+                
+                logger.info(f"[Радио] Выбран жанр: '{genre}', поисковый запрос: '{search_query}' для чата {chat_id}.")
                 
                 # 2. Скачиваем трек
-                result = await self.downloader.download_with_retry(genre)
+                result = await self.downloader.download_with_retry(search_query)
 
                 if result and result.success:
                     # 3. Отправляем трек в чат
