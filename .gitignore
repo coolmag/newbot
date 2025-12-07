@@ -104,3 +104,6 @@ venv.bak/
 cache.db
 bot.log
 downloads/
+
+# Cookies (не коммитить в репозиторий!)
+cookies.txt

@@ -12,7 +12,6 @@ from config import settings, Source
 from keyboards import get_main_keyboard, get_source_keyboard
 from states import BotState
 from youtube import YouTubeDownloader
-from deezer import DeezerDownloader
 from base import DownloadResult
 from radio import RadioService
 from logger import logger
@@ -289,7 +288,7 @@ class BotHandlers:
             "*/play, /p* <название> - Поиск и загрузка трека.\n\n"
             "*/audiobook, /ab* <название> - Поиск аудиокниги.\n\n"
             "*/radio <on/off>* - Включить или выключить радио (только для админов).\n\n"
-            "*/source, /src* - Выбрать источник поиска (YouTube, Deezer).\n\n"
+            "*/source, /src* - Выбрать источник поиска (YouTube, YouTube Music).\n\n"
             "*/status, /stat* - Показать текущий статус бота.\n\n"
             "*/menu* - Показать главное меню.\n\n"
             "*/help* - Показать это сообщение."
