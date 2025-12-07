@@ -33,20 +33,24 @@ async def main() -> None:
         logger.info(f"🔑 Токен: ...{settings.BOT_TOKEN[-6:]}")
 
         await app.initialize()
+        await app.start()
+        
+        # Проверяем статус бота
+        bot_info = await app.bot.get_me()
+        logger.info(f"✅ Бот активен: @{bot_info.username} ({bot_info.first_name})")
         
         # Запускаем polling
         await app.updater.start_polling(
             drop_pending_updates=True,
             allowed_updates=["message", "callback_query", "my_chat_member"],
-            poll_interval=1.0,
-            timeout=10,
         )
         
         logger.info("✅ Бот запущен и готов к работе.")
         logger.info("✅ Polling активен, ожидаю обновления...")
         logger.info("Для остановки нажмите Ctrl+C")
 
-        await asyncio.Event().wait()
+        # Используем run_polling вместо Event().wait() для правильной работы
+        await app.updater.idle()
 
     except KeyboardInterrupt:
         logger.info("👋 Получен сигнал остановки...")
@@ -58,6 +62,7 @@ async def main() -> None:
             if handlers_instance:
                 await handlers_instance.cleanup()
             if 'app' in locals():
+                await app.updater.stop()
                 await app.stop()
                 await app.shutdown()
         except Exception as e:

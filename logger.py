@@ -37,7 +37,7 @@ def setup_logger() -> logging.Logger:
         
     # Уменьшаем "шум" от сторонних библиотек
     logging.getLogger("httpx").setLevel(logging.WARNING)
-    logging.getLogger("telegram").setLevel(logging.WARNING)
+    logging.getLogger("telegram").setLevel(logging.INFO)  # Включаем логи telegram для отладки
     logging.getLogger("aiosqlite").setLevel(logging.WARNING)
 
     return log

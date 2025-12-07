@@ -64,11 +64,13 @@ class BotHandlers:
             CommandHandler("help", self.handle_help),
             CallbackQueryHandler(self.handle_callback),
             ChatMemberHandler(self.handle_chat_member, ChatMemberHandler.MY_CHAT_MEMBER),
-            # Обработчик для логирования всех сообщений (для отладки)
-            MessageHandler(filters.COMMAND, self.handle_unknown_command),
         ]
         for handler in handlers:
             self.app.add_handler(handler)
+        
+        # Обработчик для логирования всех команд (должен быть последним)
+        self.app.add_handler(MessageHandler(filters.COMMAND, self.handle_unknown_command))
+        
         logger.info("✅ Обработчики команд зарегистрированы.")
 
     async def cleanup(self):
@@ -123,7 +125,7 @@ class BotHandlers:
         try:
             if update.message and update.message.text:
                 command = update.message.text.split()[0] if update.message.text else "unknown"
-                logger.warning(f"Получена неизвестная команда: {command} от пользователя {update.effective_user.id} в чате {update.effective_chat.id}")
+                logger.warning(f"⚠️ Получена неизвестная команда: {command} от пользователя {update.effective_user.id} в чате {update.effective_chat.id} ({update.effective_chat.type})")
                 # Не отвечаем на неизвестные команды, чтобы не спамить
         except Exception as e:
             logger.error(f"Ошибка в handle_unknown_command: {e}", exc_info=True)
