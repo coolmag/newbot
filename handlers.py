@@ -1,6 +1,7 @@
 import asyncio
 import os
 import sys
+import time
 
 from telegram import Update, Message
 from telegram.ext import Application, ContextTypes, CommandHandler, CallbackQueryHandler, ChatMemberHandler
@@ -65,7 +66,7 @@ class BotHandlers:
             CommandHandler(["play", "p"], self.handle_play),
             CommandHandler("admin", self.show_admin_panel),
             CommandHandler(["status", "stat"], self.handle_status),
-            CommandHandler("test", self.test_search),
+            CommandHandler("radio_test", self.radio_test),
             CallbackQueryHandler(self.handle_callback),
             ChatMemberHandler(self.handle_chat_member, ChatMemberHandler.MY_CHAT_MEMBER),
             MessageHandler(filters.COMMAND, self.handle_unknown_command),
@@ -152,22 +153,34 @@ class BotHandlers:
         status_text = await self._get_status_text()
         await update.message.reply_text(status_text, parse_mode=ParseMode.MARKDOWN)
 
-    async def test_search(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Команда для тестирования поиска."""
-        query = " ".join(context.args) if context.args else "rock music"
+    async def radio_test(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Тест скорости радио."""
+        user_id = update.effective_user.id
+        if not is_admin(user_id):
+            return
         
-        test_msg = await update.message.reply_text(f"🔍 Тестовый поиск: {query}")
+        test_msg = await update.message.reply_text("⏱️ Тестирование скорости радио...")
         
-        result = await self.youtube.search(query, limit=5)
+        # Тест поиска
+        start = time.time()
+        tracks = await self.youtube.search("synthwave music", limit=5)
+        search_time = time.time() - start
         
-        if result:
-            response = f"✅ Найдено {len(result)} треков:\n\n"
-            for i, track in enumerate(result[:5], 1):
-                response += f"{i}. {track.display_name} ({track.duration//60}:{track.duration%60:02d})\n"
-        else:
-            response = f"❌ Не найдено треков для '{query}'"
+        # Тест загрузки
+        if tracks:
+            start = time.time()
+            result = await self.youtube.download_with_retry(f"{tracks[0].artist} - {tracks[0].title}")
+            download_time = time.time() - start
         
-        await test_msg.edit_text(response)
+        report = (
+            f"📊 **Отчет о скорости:**\n"
+            f"• Поиск: {search_time:.1f}с\n"
+            f"• Загрузка: {download_time:.1f}с\n"
+            f"• Найдено треков: {len(tracks)}\n"
+            f"• Источник: {self.state.radio.current_genre or 'не установлен'}"
+        )
+        
+        await test_msg.edit_text(report, parse_mode=ParseMode.MARKDOWN)
 
     # --- Обработчики колбэков и событий ---
 

@@ -1,7 +1,8 @@
 
 import asyncio
 import os
-import glob # Добавляем импорт glob
+import glob
+import time
 from typing import Any, Dict, List
 
 import yt_dlp
@@ -21,6 +22,8 @@ class YouTubeDownloader(BaseDownloader):
         super().__init__()
         self.cache = CacheManager()
         self._check_ffmpeg()
+        self.search_cache = {}
+        self.search_cache_ttl = 300
 
     def _check_ffmpeg(self):
         """Проверяет доступность FFmpeg при инициализации."""
@@ -94,21 +97,24 @@ class YouTubeDownloader(BaseDownloader):
         )
 
     async def search(self, query: str, limit: int = 30) -> List[TrackInfo]:
-        """
-        Ищет видео на YouTube и возвращает список треков.
-        """
+        """Ищет видео с кэшированием результатов."""
+        cache_key = f"search:{query}:{limit}"
+        
+        if cache_key in self.search_cache:
+            cache_time, playlist = self.search_cache[cache_key]
+            if time.time() - cache_time < self.search_cache_ttl:
+                logger.info(f"[{self.name}] Использую кэшированные результаты для '{query}'")
+                return playlist
+        
         logger.info(f"[{self.name}] Поиск видео для '{query}'...")
         
         try:
             ydl_opts = self._get_ydl_options()
             
-            # Упрощаем фильтры для радио - только базовая проверка
             ydl_opts['match_filter'] = yt_dlp.utils.match_filter_func(
                 "duration > 60 & !is_live"
             )
             
-            # Для радио используем более конкретные запросы
-            # Добавляем ключевые слова для музыки
             search_queries = [
                 f"{query} music official audio",
                 f"{query} song",
@@ -130,19 +136,13 @@ class YouTubeDownloader(BaseDownloader):
                     entries = info.get('entries', []) if info else []
                     
                     for entry in entries:
-                        if not entry:
+                        if not entry or not entry.get("id"):
                             continue
                         
-                        # Базовая проверка на валидность
-                        if not entry.get("id"):
-                            continue
-                        
-                        # Пропускаем слишком длинные видео (>30 минут)
                         duration = int(entry.get("duration", 0))
-                        if duration > 1800:  # 30 минут
+                        if duration > 1800:
                             continue
                         
-                        # Проверяем наличие названия
                         title = entry.get("title", "")
                         if not title or title.lower() == "unknown title":
                             continue
@@ -157,7 +157,6 @@ class YouTubeDownloader(BaseDownloader):
                 logger.warning(f"Не найдено видео для '{query}'.")
                 return []
 
-            # Преобразуем в TrackInfo
             playlist = []
             seen_ids = set()
             
@@ -179,6 +178,9 @@ class YouTubeDownloader(BaseDownloader):
                     identifier=video_id
                 )
                 playlist.append(track_info)
+            
+            if playlist:
+                self.search_cache[cache_key] = (time.time(), playlist)
             
             logger.info(f"Найдено {len(playlist)} треков для '{query}'.")
             return playlist

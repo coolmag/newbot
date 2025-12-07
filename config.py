@@ -64,37 +64,22 @@ class Settings:
     # --- Настройки загрузчика ---
     MAX_QUERY_LENGTH: int = 150
     MAX_FILE_SIZE_MB: int = 50
-    DOWNLOAD_TIMEOUT_S: int = 180  # Увеличено для медленных соединений
+    DOWNLOAD_TIMEOUT_S: int = 30  # Таймаут для скачивания
 
     # --- Настройки повторных попыток ---
-    MAX_RETRIES: int = 2
+    MAX_RETRIES: int = 1  # Для радио меньше попыток = быстрее переключение
     RETRY_DELAY_S: float = 1.5
 
     # --- Настройки радио ---
     RADIO_SOURCE: str = "youtube" # youtube или internet_archive
-    RADIO_COOLDOWN_S: int = 10  # 10 секунд
+    RADIO_COOLDOWN_S: int = 5  # Только 5 секунд между треками, т.к. загрузка фоновая
     RADIO_GENRES: List[str] = [
-        "lo fi",
-        "chillhop",
-        "synthwave",
-        "jazz",
-        "ambient",
-        "electronic",
-        "indie",
-        "pop",
-        "rock",
-        "hip hop"
-    ]
-    RADIO_SEARCH_PATTERNS: List[str] = [
-        "{genre} music",
-        "{genre} instrumental",
-        "{genre} ambient mix",
-        "{genre} chill beats",
-        "{genre} playlist",
-        "{genre} full album",
-        "{genre} official audio",
-        "{genre} topic",
-        "{genre}", # Generic search as a last resort
+        "synthwave music",
+        "lofi hip hop music",
+        "chillstep music",
+        "ambient music",
+        "retrowave music",
+        "cyberpunk music"
     ]
 
     # --- Настройки кэша ---

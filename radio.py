@@ -126,108 +126,62 @@ class RadioService:
             self.state.radio.playlist = []
 
     async def _radio_loop(self, chat_id: int):
-        """
-        Основной цикл радио: берет трек из плейлиста, скачивает, отправляет
-        и ждет перед повторением.
-        """
-        logger.info(f"▶️ Радио-цикл запущен для чата {chat_id}.")
-        await asyncio.sleep(2)
-
-        status_message = None
+        """Основной цикл радио с предварительной загрузкой."""
+        logger.info(f"▶️ Оптимизированный радио-цикл запущен для чата {chat_id}.")
+        
+        async def preload_next_track():
+            if not self.state.radio.playlist:
+                await self._fetch_playlist()
+            if self.state.radio.playlist:
+                next_track = self.state.radio.playlist[0]
+                query = f"{next_track.artist} - {next_track.title}" if next_track.artist != "Unknown Artist" else next_track.title
+                return await self.downloader.download_with_retry(query)
+            return None
+        
         while self.state.radio.is_on:
             try:
-                # 1. Проверяем и при необходимости обновляем плейлист
-                if not self.state.radio.playlist:
-                    try:
-                        if status_message:
-                            await status_message.edit_text("🎵 Обновляю плейлист радио...")
-                        else:
-                            status_message = await self.bot.send_message(chat_id, "🎵 Обновляю плейлист радио...")
-                    except TelegramError:
-                        status_message = await self.bot.send_message(chat_id, "🎵 Обновляю плейлист радио...")
-                    
-                    await self._fetch_playlist()
-                    
-                    if not self.state.radio.playlist:
+                if not self.state.radio.next_track_result:
+                    status_msg = await self.bot.send_message(chat_id, "⏳ Загружаю первый трек...")
+                    self.state.radio.next_track_result = await preload_next_track()
+                    if status_msg:
                         try:
-                            if status_message:
-                                await status_message.edit_text("😔 Не удалось обновить плейлист. Повторю через 1 минуту.")
-                        except TelegramError:
+                            await status_msg.delete()
+                        except:
                             pass
-                        await asyncio.sleep(60)
-                        continue
-
-                # 2. Берем следующий трек из плейлиста
-                track_to_play = self.state.radio.playlist.pop(0)
                 
-                try:
-                    if status_message:
-                        await status_message.edit_text(f"🎵 Скачиваю: {track_to_play.display_name}...")
-                except TelegramError:
-                    status_message = await self.bot.send_message(chat_id, f"🎵 Скачиваю: {track_to_play.display_name}...")
-                
-                # 3. Скачиваем трек
-                if settings.RADIO_SOURCE == "internet_archive" and track_to_play.identifier:
-                    query = track_to_play.identifier
-                else:
-                    query = f"{track_to_play.artist} - {track_to_play.title}"
-                result = await self.downloader.download_with_retry(query)
-
-                if result and result.success:
-                    try:
-                        if status_message:
-                            await status_message.edit_text("📤 Отправляю трек...")
-                    except TelegramError:
-                        pass
+                if self.state.radio.next_track_result and self.state.radio.next_track_result.success:
+                    result = self.state.radio.next_track_result
                     
-                    caption = f"🎶 *Радио | {self.state.radio.current_genre.capitalize()}*\n\n`{track_to_play.display_name}`"
-                    await self._send_radio_audio(chat_id, result, caption)
+                    if len(self.state.radio.playlist) > 1:
+                        self.state.radio.next_track_future = asyncio.create_task(preload_next_track())
                     
-                    if status_message:
-                        await status_message.delete()
-                        status_message = None
+                    if self.state.radio.playlist:
+                        current_track = self.state.radio.playlist.pop(0)
+                        caption = f"🎶 *Радио | {self.state.radio.current_genre}*\n\n`{current_track.display_name}`"
+                        await self._send_radio_audio(chat_id, result, caption)
                     
-                    # 4. Ожидаем кулдаун или событие пропуска
+                    if self.state.radio.next_track_future:
+                        self.state.radio.next_track_result = await self.state.radio.next_track_future
+                        self.state.radio.next_track_future = None
+                    else:
+                        self.state.radio.next_track_result = await preload_next_track()
+                    
                     try:
                         await asyncio.wait_for(
                             self.state.radio.skip_event.wait(),
                             timeout=settings.RADIO_COOLDOWN_S
                         )
-                    except asyncio.TimeoutError:
-                        pass # Нормальное завершение
-                    
-                    if self.state.radio.skip_event.is_set():
-                        logger.info("[Радио] Трек пропущен. Запускаю следующий.")
                         self.state.radio.skip_event.clear()
+                    except asyncio.TimeoutError:
+                        continue
+                        
                 else:
-                    logger.warning(f"Не удалось скачать трек: {track_to_play.display_name}. Пропускаю.")
-                    try:
-                        if status_message:
-                            await status_message.edit_text(f"⚠️ Не удалось скачать трек. Пропускаю...")
-                    except TelegramError:
-                        pass
-
+                    logger.error("Не удалось загрузить трек для радио.")
+                    await asyncio.sleep(5)
+                    
             except asyncio.CancelledError:
-                logger.info("Радио-цикл отменен.")
                 break
-            except TelegramError as e:
-                if "Message to edit not found" in str(e):
-                    logger.warning("Сообщение для редактирования не найдено, возможно, оно было удалено.")
-                    status_message = None # Сбрасываем, чтобы отправить новое
-                else:
-                    logger.error(f"Ошибка Telegram в радио-цикле: {e}. Радио остановлено.")
-                    await self.stop()
             except Exception as e:
-                logger.critical(f"Критическая ошибка в радио-цикле: {e}", exc_info=True)
-                await asyncio.sleep(60)
-            finally:
-                if status_message:
-                    try:
-                        await status_message.delete()
-                    except TelegramError:
-                        pass
-        
-        logger.info(f"⏹️ Радио-цикл завершен для чата {chat_id}.")
-        self.state.radio.is_on = False
-        self.state.radio.current_genre = None
+                logger.error(f"Ошибка в радио-цикле: {e}")
+                await asyncio.sleep(5)
 
