@@ -68,6 +68,7 @@ class BotHandlers:
             CommandHandler(["status", "stat"], self.handle_status),
             CommandHandler("refresh", self.radio_refresh),
             CommandHandler("test", self.test_search),
+            CommandHandler("debug", self.debug_info),
             CallbackQueryHandler(self.handle_callback),
             ChatMemberHandler(self.handle_chat_member, ChatMemberHandler.MY_CHAT_MEMBER),
             MessageHandler(filters.COMMAND, self.handle_unknown_command),
@@ -96,7 +97,8 @@ class BotHandlers:
             "**Меню и статус:**\n"
             "🎛️ `/menu` - Показать главное меню.\n"
             "📊 `/status` (`/stat`) - Узнать текущий статус.\n"
-            "🔄 `/refresh` - Принудительно обновить плейлист радио.\n\n"
+            "🔄 `/refresh` - Принудительно обновить плейлист радио.\n"
+            "🐛 `/debug` - Техническая информация.\n\n"
         )
         if is_admin(user.id):
             help_text += (
@@ -183,7 +185,7 @@ class BotHandlers:
 
     async def test_search(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Команда для тестирования поиска."""
-        query = " ".join(context.args) if context.args else "rock music"
+        query = " ".join(context.args) if context.args else "lofi hip hop"
         user_id = update.effective_user.id
         
         if not is_admin(user_id):
@@ -202,10 +204,77 @@ class BotHandlers:
                 mins = track.duration // 60
                 secs = track.duration % 60
                 response += f"{i}. {track.display_name} ({mins}:{secs:02d})\n"
+            
+            # Тест скачивания первого трека
+            if result:
+                response += f"\n⏬ Тест скачивания..."
+                await test_msg.edit_text(response)
+                
+                start_time = time.time()
+                dl_result = await self.youtube.download_with_retry(f"{result[0].artist} - {result[0].title}")
+                dl_time = time.time() - start_time
+                
+                if dl_result and dl_result.success:
+                    response += f"\n✅ Скачивание успешно за {dl_time:.1f}с"
+                    if dl_result.file_path:
+                        file_size = os.path.getsize(dl_result.file_path) / (1024 * 1024)
+                        response += f" ({file_size:.1f} МБ)"
+                else:
+                    error = dl_result.error if dl_result else "Неизвестная ошибка"
+                    response += f"\n❌ Ошибка скачивания: {error}"
         else:
             response = f"❌ Не найдено треков для '{query}' за {search_time:.1f}с"
         
         await test_msg.edit_text(response)
+
+    async def debug_info(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Техническая информация для отладки."""
+        user_id = update.effective_user.id
+        if not is_admin(user_id):
+            await update.message.reply_text("⛔ Доступно только администраторам.")
+            return
+        
+        # Проверяем наличие файлов
+        cookies_exists = os.path.exists(settings.COOKIES_FILE) if settings.COOKIES_FILE else False
+        downloads_dir_exists = os.path.exists(settings.DOWNLOADS_DIR)
+        cache_db_exists = os.path.exists(settings.CACHE_DB_PATH)
+        
+        # Проверяем FFmpeg
+        ffmpeg_ok = False
+        try:
+            import subprocess
+            result = subprocess.run(
+                ["ffmpeg", "-version"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=2
+            )
+            ffmpeg_ok = result.returncode == 0
+        except:
+            pass
+        
+        # Собираем статистику
+        downloads_count = 0
+        if downloads_dir_exists:
+            downloads_count = len([f for f in os.listdir(settings.DOWNLOADS_DIR) if f.endswith('.mp3')])
+        
+        debug_text = (
+            f"🐛 **Техническая информация:**\n\n"
+            f"• **Cookies файл:** {'✅ Найден' if cookies_exists else '❌ Отсутствует'}\n"
+            f"• **Директория downloads:** {'✅ Существует' if downloads_dir_exists else '❌ Отсутствует'}\n"
+            f"• **Файлов в downloads:** {downloads_count}\n"
+            f"• **Кэш БД:** {'✅ Найден' if cache_db_exists else '❌ Отсутствует'}\n"
+            f"• **FFmpeg:** {'✅ Доступен' if ffmpeg_ok else '❌ Недоступен'}\n"
+            f"• **Состояние радио:** {'🟢 Вкл' if self.state.radio.is_on else '🔴 Выкл'}\n"
+            f"• **Треков в плейлисте:** {len(self.state.radio.playlist)}\n"
+            f"• **Текущий жанр:** {self.state.radio.current_genre or 'Не установлен'}\n"
+            f"• **Источник радио:** {settings.RADIO_SOURCE}\n"
+            f"• **Количество жанров:** {len(settings.RADIO_GENRES)}\n"
+            f"• **Таймаут загрузки:** {settings.DOWNLOAD_TIMEOUT_S}с\n"
+            f"• **Задержка радио:** {settings.RADIO_COOLDOWN_S}с\n"
+        )
+        
+        await update.message.reply_text(debug_text, parse_mode=ParseMode.MARKDOWN)
 
     # --- Обработчики колбэков и событий ---
 

@@ -73,24 +73,26 @@ class Settings:
     RADIO_SOURCE: str = "youtube"
     RADIO_COOLDOWN_S: int = 15  # Уменьшено с 240
     RADIO_MAX_DURATION_S: int = int(os.getenv("RADIO_MAX_DURATION_S", 600))  # 10 минут
+    
+    # Простые жанры без дублирования "music"
     RADIO_GENRES: List[str] = [
         "lofi hip hop",
         "synthwave",
-        "chill music",
+        "chillhop",
         "jazz",
         "ambient",
         "electronic",
         "retrowave",
-        "cyberpunk music",
+        "cyberpunk",
         "indie pop",
-        "rock music"
+        "rock"
     ]
+    
+    # Упрощенные шаблоны поиска
     RADIO_SEARCH_PATTERNS: List[str] = [
-        "{genre} music",
-        "{genre} song",
-        "{genre} track",
-        "{genre} official audio",
         "{genre}",
+        "{genre} song",
+        "{genre} music",
     ]
 
     # --- Настройки кэша ---
