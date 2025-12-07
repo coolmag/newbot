@@ -74,7 +74,6 @@ class YouTubeDownloader(BaseDownloader):
             },
             "no_check_certificate": False,
             "prefer_insecure": False,
-            'match_filter': yt_dlp.utils.match_filter_func(f"duration < {settings.RADIO_MAX_DURATION_S}"), # Фильтр по длительности
         }
         return options
 
@@ -94,63 +93,79 @@ class YouTubeDownloader(BaseDownloader):
             lambda: yt_dlp.YoutubeDL(ydl_opts).process_info(info)
         )
 
-    async def search(self, query: str, limit: int = 30) -> List[TrackInfo]:
+    async def search(self, query: str, limit: int = 10) -> List[TrackInfo]:
         """
-        Ищет видео на YouTube и возвращает список треков.
+        Ищет плейлист на YouTube и возвращает список треков из него.
         """
         logger.info(f"[{self.name}] Поиск плейлиста для '{query}' на YouTube...")
         
         try:
             ydl_opts = self._get_ydl_options()
-            ydl_opts["default_search"] = f"ytsearch{limit}"
+            ydl_opts["default_search"] = "ytsearch1"
+            ydl_opts["noplaylist"] = False
+            ydl_opts["extract_flat"] = "in_playlist"
+            ydl_opts["playlistend"] = limit
             
-            info = await self._extract_info(query, ydl_opts)
+            info = await self._extract_info(f"{query} playlist", ydl_opts)
             
             entries = info.get('entries', []) if info else []
             if not entries:
-                logger.warning(f"Не найдено треков для '{query}' на YouTube.")
+                logger.warning(f"Не найдено плейлистов для '{query}' на YouTube.")
                 return []
 
             playlist = []
             for entry in entries:
-                if not entry:
+                if not entry or entry.get("_type") != "url":
                     continue
                 
                 track_info = TrackInfo(
                     title=entry.get("title", "Unknown Title"),
-                    artist=entry.get("channel") or entry.get("uploader", "Unknown Artist"),
+                    artist="Unknown Artist",
                     duration=int(entry.get("duration", 0)),
                     source=Source.YOUTUBE.value,
+                    identifier=entry.get("id"),
                 )
                 playlist.append(track_info)
             
-            logger.info(f"Найдено {len(playlist)} треков для '{query}'.")
+            logger.info(f"Найдено {len(playlist)} треков в плейлисте для '{query}'.")
             return playlist
 
         except Exception as e:
-            logger.error(f"[{self.name}] Непредвиденная ошибка при поиске: {e}", exc_info=True)
+            logger.error(f"[{self.name}] Непредвиденная ошибка при поиске плейлиста: {e}", exc_info=True)
             return []
 
     async def download(self, query: str) -> DownloadResult:
         """
-        Основной метод для поиска и скачивания с YouTube.
+        Скачивает трек с YouTube.
+        Если query - это id видео, скачивает напрямую.
+        Иначе - ищет и скачивает первый результат.
         """
         source = Source.YOUTUBE
         cached = await self.cache.get(query, source)
         if cached:
             return cached
             
-        logger.info(f"[{self.name}] Поиск трека для '{query}'...")
+        logger.info(f"[{self.name}] Скачивание трека '{query}' с YouTube...")
 
         try:
             ydl_opts = self._get_ydl_options()
+            
+            is_id = " " not in query and len(query) < 20
+            
+            if is_id:
+                search_query = query
+            else:
+                search_query = f"ytsearch1:{query}"
+
             info = await asyncio.wait_for(
-                self._extract_info(query, ydl_opts),
+                self._extract_info(search_query, ydl_opts),
                 timeout=settings.DOWNLOAD_TIMEOUT_S
             )
 
             entries = info.get('entries', []) if info else []
             if not entries:
+                if is_id:
+                    return DownloadResult(success=False, error=f"Не удалось найти видео с id: {query}")
                 logger.warning(f"Не найдено результатов для запроса: {query}")
                 return DownloadResult(success=False, error="Ничего не найдено. Попробуйте другой запрос.")
             
@@ -191,6 +206,7 @@ class YouTubeDownloader(BaseDownloader):
                 artist=video_info.get("channel") or video_info.get("uploader", "Unknown Artist"),
                 duration=int(video_info.get("duration", 0)),
                 source=source.value,
+                identifier=video_id,
             )
             
             result = DownloadResult(success=True, file_path=str(expected_path), track_info=track_info)

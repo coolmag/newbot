@@ -71,7 +71,7 @@ class Settings:
     RETRY_DELAY_S: float = 1.5
 
     # --- Настройки радио ---
-    RADIO_SOURCE: str = "internet_archive" # youtube или internet_archive
+    RADIO_SOURCE: str = "youtube" # youtube или internet_archive
     RADIO_COOLDOWN_S: int = 240  # 4 минуты
     RADIO_MAX_DURATION_S: int = int(os.getenv("RADIO_MAX_DURATION_S", 900)) # 15 минут
     RADIO_GENRES: List[str] = [
