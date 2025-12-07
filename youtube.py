@@ -217,7 +217,7 @@ class YouTubeDownloader(BaseDownloader):
         }
         
         try:
-            info = await self._extract_info(f"{query} плейлист", ydl_opts)
+            info = await self._extract_info(f"{query} аудиокнига плейлист", ydl_opts)
             
             if not info or 'entries' not in info:
                 return []
