@@ -1,4 +1,3 @@
-
 import os
 from enum import Enum
 from pathlib import Path
@@ -63,23 +62,35 @@ class Settings:
 
     # --- Настройки загрузчика ---
     MAX_QUERY_LENGTH: int = 150
-    MAX_FILE_SIZE_MB: int = 50
-    DOWNLOAD_TIMEOUT_S: int = 30  # Таймаут для скачивания
+    MAX_FILE_SIZE_MB: int = 30  # Уменьшено с 50 для радио
+    DOWNLOAD_TIMEOUT_S: int = 30  # Уменьшено с 180 для радио
 
     # --- Настройки повторных попыток ---
-    MAX_RETRIES: int = 1  # Для радио меньше попыток = быстрее переключение
+    MAX_RETRIES: int = 2
     RETRY_DELAY_S: float = 1.5
 
     # --- Настройки радио ---
-    RADIO_SOURCE: str = "youtube" # youtube или internet_archive
-    RADIO_COOLDOWN_S: int = 5  # Только 5 секунд между треками, т.к. загрузка фоновая
+    RADIO_SOURCE: str = "youtube"
+    RADIO_COOLDOWN_S: int = 15  # Уменьшено с 240
+    RADIO_MAX_DURATION_S: int = int(os.getenv("RADIO_MAX_DURATION_S", 600))  # 10 минут
     RADIO_GENRES: List[str] = [
-        "synthwave music",
-        "lofi hip hop music",
-        "chillstep music",
-        "ambient music",
-        "retrowave music",
-        "cyberpunk music"
+        "lofi hip hop",
+        "synthwave",
+        "chill music",
+        "jazz",
+        "ambient",
+        "electronic",
+        "retrowave",
+        "cyberpunk music",
+        "indie pop",
+        "rock music"
+    ]
+    RADIO_SEARCH_PATTERNS: List[str] = [
+        "{genre} music",
+        "{genre} song",
+        "{genre} track",
+        "{genre} official audio",
+        "{genre}",
     ]
 
     # --- Настройки кэша ---
@@ -92,4 +103,3 @@ class Settings:
 
 # Создаем единственный экземпляр настроек
 settings = Settings()
-

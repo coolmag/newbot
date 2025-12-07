@@ -1,4 +1,3 @@
-
 import asyncio
 import os
 import glob
@@ -22,8 +21,9 @@ class YouTubeDownloader(BaseDownloader):
         super().__init__()
         self.cache = CacheManager()
         self._check_ffmpeg()
+        # Кэш для результатов поиска
         self.search_cache = {}
-        self.search_cache_ttl = 300
+        self.search_cache_ttl = 300  # 5 минут
 
     def _check_ffmpeg(self):
         """Проверяет доступность FFmpeg при инициализации."""
@@ -61,8 +61,8 @@ class YouTubeDownloader(BaseDownloader):
             "quiet": True,
             "no_warnings": True,
             "ignoreerrors": True,
-            "socket_timeout": 30,
-            "retries": 3,
+            "socket_timeout": 15,
+            "retries": 2,
             "noplaylist": True,
             "default_search": "ytsearch",
             "source_address": "0.0.0.0",
@@ -77,7 +77,16 @@ class YouTubeDownloader(BaseDownloader):
             },
             "no_check_certificate": False,
             "prefer_insecure": False,
+            'match_filter': yt_dlp.utils.match_filter_func(
+                f"duration < {settings.RADIO_MAX_DURATION_S} & !is_live & !playlist"
+            ),
         }
+        
+        # Добавляем cookies файл, если указан
+        if settings.COOKIES_FILE and os.path.exists(settings.COOKIES_FILE):
+            options["cookiefile"] = settings.COOKIES_FILE
+            logger.info(f"✅ Использую cookies файл: {settings.COOKIES_FILE}")
+        
         return options
 
     async def _extract_info(self, query: str, ydl_opts: Dict) -> Dict:
@@ -97,130 +106,97 @@ class YouTubeDownloader(BaseDownloader):
         )
 
     async def search(self, query: str, limit: int = 30) -> List[TrackInfo]:
-        """Ищет видео с кэшированием результатов."""
-        cache_key = f"search:{query}:{limit}"
+        """
+        Ищет видео на YouTube и возвращает список треков.
+        """
+        logger.info(f"[{self.name}] Поиск видео для '{query}'...")
         
+        # Используем кэш поиска
+        cache_key = f"search:{query}:{limit}"
         if cache_key in self.search_cache:
             cache_time, playlist = self.search_cache[cache_key]
             if time.time() - cache_time < self.search_cache_ttl:
                 logger.info(f"[{self.name}] Использую кэшированные результаты для '{query}'")
                 return playlist
         
-        logger.info(f"[{self.name}] Поиск видео для '{query}'...")
-        
         try:
             ydl_opts = self._get_ydl_options()
+            ydl_opts["default_search"] = f"ytsearch{limit * 2}"
             
-            ydl_opts['match_filter'] = yt_dlp.utils.match_filter_func(
-                "duration > 60 & !is_live"
+            # Устанавливаем таймаут для поиска
+            info = await asyncio.wait_for(
+                self._extract_info(query, ydl_opts),
+                timeout=15
             )
             
-            search_queries = [
-                f"{query} music official audio",
-                f"{query} song",
-                f"{query} track",
-                f"{query} instrumental",
-                f"{query}"
-            ]
-            
-            all_entries = []
-            
-            for search_query in search_queries:
-                if len(all_entries) >= limit:
-                    break
-                    
-                ydl_opts["default_search"] = f"ytsearch{10}:{search_query}"
-                
-                try:
-                    info = await self._extract_info(search_query, ydl_opts)
-                    entries = info.get('entries', []) if info else []
-                    
-                    for entry in entries:
-                        if not entry or not entry.get("id"):
-                            continue
-                        
-                        duration = int(entry.get("duration", 0))
-                        if duration > 1800:
-                            continue
-                        
-                        title = entry.get("title", "")
-                        if not title or title.lower() == "unknown title":
-                            continue
-                        
-                        all_entries.append(entry)
-                        
-                except Exception as e:
-                    logger.warning(f"Поиск по запросу '{search_query}' не удался: {e}")
-                    continue
-            
-            if not all_entries:
+            entries = info.get('entries', []) if info else []
+            if not entries:
                 logger.warning(f"Не найдено видео для '{query}'.")
+                self.search_cache[cache_key] = (time.time(), [])
                 return []
 
             playlist = []
             seen_ids = set()
             
-            for entry in all_entries:
-                if len(playlist) >= limit:
-                    break
-                    
-                video_id = entry.get("id")
-                if video_id in seen_ids:
+            for entry in entries:
+                if not entry:
                     continue
-                    
+                
+                video_id = entry.get("id")
+                if not video_id or video_id in seen_ids:
+                    continue
+                
+                # Пропускаем слишком длинные видео
+                duration = int(entry.get("duration", 0))
+                if duration < 60 or duration > settings.RADIO_MAX_DURATION_S:
+                    continue
+                
                 seen_ids.add(video_id)
                 
                 track_info = TrackInfo(
                     title=entry.get("title", "Unknown Title"),
                     artist=entry.get("channel") or entry.get("uploader", "Unknown Artist"),
-                    duration=int(entry.get("duration", 0)),
+                    duration=duration,
                     source=Source.YOUTUBE.value,
-                    identifier=video_id
                 )
                 playlist.append(track_info)
+                
+                if len(playlist) >= limit:
+                    break
             
-            if playlist:
-                self.search_cache[cache_key] = (time.time(), playlist)
+            logger.info(f"Найдено {len(playlist)} видео для '{query}'.")
             
-            logger.info(f"Найдено {len(playlist)} треков для '{query}'.")
+            # Сохраняем в кэш
+            self.search_cache[cache_key] = (time.time(), playlist)
             return playlist
 
+        except asyncio.TimeoutError:
+            logger.error(f"[{self.name}] Таймаут поиска для '{query}'")
+            return []
         except Exception as e:
-            logger.error(f"[{self.name}] Непредвиденная ошибка при поиске: {e}", exc_info=True)
+            logger.error(f"[{self.name}] Ошибка поиска: {e}", exc_info=True)
             return []
 
     async def download(self, query: str) -> DownloadResult:
         """
-        Скачивает трек с YouTube.
-        Если query - это id видео, скачивает напрямую.
-        Иначе - ищет и скачивает первый результат.
+        Основной метод для поиска и скачивания с YouTube.
         """
         source = Source.YOUTUBE
         cached = await self.cache.get(query, source)
         if cached:
             return cached
             
-        logger.info(f"[{self.name}] Скачивание трека '{query}' с YouTube...")
+        logger.info(f"[{self.name}] Поиск трека для '{query}'...")
 
         try:
             ydl_opts = self._get_ydl_options()
-            
-            is_id = " " not in query and len(query) < 20
-            
-            if is_id:
-                search_query = query
-            else:
-                search_query = f"ytsearch1:{query}"
-
             info = await asyncio.wait_for(
-                self._extract_info(search_query, ydl_opts),
-                timeout=settings.DOWNLOAD_TIMEOUT_S
+                self._extract_info(query, ydl_opts),
+                timeout=20
             )
 
             entries = info.get('entries', []) if info else []
             if not entries:
-                if is_id:
-                    return DownloadResult(success=False, error=f"Не удалось найти видео с id: {query}")
                 logger.warning(f"Не найдено результатов для запроса: {query}")
                 return DownloadResult(success=False, error="Ничего не найдено. Попробуйте другой запрос.")
             
@@ -228,6 +204,14 @@ class YouTubeDownloader(BaseDownloader):
             
             if not video_info or not video_info.get("id"):
                 return DownloadResult(success=False, error="Не удалось получить информацию о видео.")
+            
+            # Проверяем размер файла перед скачиванием
+            filesize = video_info.get('filesize') or video_info.get('filesize_approx')
+            if filesize and filesize > settings.MAX_FILE_SIZE_MB * 1024 * 1024:
+                return DownloadResult(
+                    success=False, 
+                    error=f"Файл слишком большой ({filesize // (1024*1024)} МБ). Лимит: {settings.MAX_FILE_SIZE_MB} МБ."
+                )
 
             await asyncio.wait_for(
                 self._download_info(video_info, ydl_opts),
@@ -236,31 +220,53 @@ class YouTubeDownloader(BaseDownloader):
             
             video_id = video_info["id"]
             
-            # Ждем немного, чтобы FFmpeg успел завершить конвертацию
-            await asyncio.sleep(2)
+            # Ищем скачанный файл
+            downloaded_files = glob.glob(str(settings.DOWNLOADS_DIR / f"{video_id}.mp3"))
             
-            # Ищем .mp3 файл
-            expected_path = settings.DOWNLOADS_DIR / f"{video_id}.mp3"
+            if not downloaded_files:
+                # Если .mp3 не найден, ищем любой файл с этим ID
+                downloaded_files = glob.glob(str(settings.DOWNLOADS_DIR / f"{video_id}.*"))
+                if not downloaded_files:
+                    return DownloadResult(success=False, error="Файл не был создан после загрузки.")
+                
+                # Пробуем конвертировать найденный файл
+                found_file = downloaded_files[0]
+                logger.warning(f"Найден файл {found_file} вместо .mp3. Пробую конвертировать...")
+                
+                # Создаем путь для MP3
+                mp3_path = settings.DOWNLOADS_DIR / f"{video_id}.mp3"
+                
+                try:
+                    import subprocess
+                    result = subprocess.run(
+                        ["ffmpeg", "-i", found_file, "-codec:a", "libmp3lame", "-q:a", "2", str(mp3_path)],
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        timeout=30
+                    )
+                    
+                    if result.returncode != 0 or not os.path.exists(mp3_path):
+                        return DownloadResult(success=False, error="Ошибка конвертации в MP3.")
+                    
+                    # Удаляем исходный файл
+                    try:
+                        os.remove(found_file)
+                    except:
+                        pass
+                    
+                except Exception as e:
+                    return DownloadResult(success=False, error=f"Ошибка конвертации: {e}")
             
-            if not expected_path.exists():
-                logger.error(f"Файл {expected_path} не был создан после скачивания и конвертации.")
-                
-                # Попробуем найти другие файлы, чтобы понять, что пошло не так
-                other_files = glob.glob(str(settings.DOWNLOADS_DIR / f"{video_id}.*"))
-                if other_files:
-                    logger.warning(f"Найдены другие файлы: {other_files}. Возможно, проблема с FFmpeg.")
-                
-                return DownloadResult(success=False, error="Ошибка конвертации в MP3.")
+            actual_file_path = downloaded_files[0]
 
             track_info = TrackInfo(
                 title=video_info.get("title", "Unknown Title"),
                 artist=video_info.get("channel") or video_info.get("uploader", "Unknown Artist"),
                 duration=int(video_info.get("duration", 0)),
                 source=source.value,
-                identifier=video_id,
             )
             
-            result = DownloadResult(success=True, file_path=str(expected_path), track_info=track_info)
+            result = DownloadResult(success=True, file_path=str(actual_file_path), track_info=track_info)
             await self.cache.set(query, source, result)
             return result
 
@@ -270,7 +276,7 @@ class YouTubeDownloader(BaseDownloader):
             err_str = str(e).lower()
             if "sign in to confirm" in err_str or "bot" in err_str:
                 logger.error(f"[{self.name}] YouTube требует подтверждение. Нужны cookies.")
-                return DownloadResult(success=False, error="YouTube требует подтверждение.")
+                return DownloadResult(success=False, error="YouTube требует подтверждение. Добавьте файл cookies.txt.")
             if "blocked" in err_str or "unavailable" in err_str or "429" in err_str:
                 logger.error(f"[{self.name}] Запрос заблокирован YouTube. Проверьте IP или cookies.")
                 return DownloadResult(success=False, error="Запрос заблокирован YouTube.")

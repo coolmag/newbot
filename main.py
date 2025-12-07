@@ -1,4 +1,3 @@
-
 import asyncio
 import sys
 
@@ -19,6 +18,7 @@ async def set_bot_commands(app: Application):
         BotCommand("menu", "🎛️ Показать главное меню"),
         BotCommand("status", "📊 Показать статус бота"),
         BotCommand("admin", "👑 Открыть панель администратора"),
+        BotCommand("refresh", "🔄 Обновить плейлист радио"),
     ]
     await app.bot.set_my_commands(commands)
     logger.info("✅ Команды бота в меню обновлены.")

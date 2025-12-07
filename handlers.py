@@ -12,7 +12,7 @@ from config import settings
 from keyboards import get_main_menu_keyboard, get_admin_panel_keyboard
 from states import BotState
 from youtube import YouTubeDownloader
-from internet_archive_downloader import InternetArchiveDownloader # Добавляем импорт
+from internet_archive_downloader import InternetArchiveDownloader
 from base import DownloadResult
 from radio import RadioService
 from logger import logger
@@ -66,7 +66,8 @@ class BotHandlers:
             CommandHandler(["play", "p"], self.handle_play),
             CommandHandler("admin", self.show_admin_panel),
             CommandHandler(["status", "stat"], self.handle_status),
-            CommandHandler("radio_test", self.radio_test),
+            CommandHandler("refresh", self.radio_refresh),
+            CommandHandler("test", self.test_search),
             CallbackQueryHandler(self.handle_callback),
             ChatMemberHandler(self.handle_chat_member, ChatMemberHandler.MY_CHAT_MEMBER),
             MessageHandler(filters.COMMAND, self.handle_unknown_command),
@@ -94,12 +95,14 @@ class BotHandlers:
             "🎶 `/play` (`/p`) - Найти и скачать трек.\n\n"
             "**Меню и статус:**\n"
             "🎛️ `/menu` - Показать главное меню.\n"
-            "📊 `/status` (`/stat`) - Узнать текущий статус.\n\n"
+            "📊 `/status` (`/stat`) - Узнать текущий статус.\n"
+            "🔄 `/refresh` - Принудительно обновить плейлист радио.\n\n"
         )
         if is_admin(user.id):
             help_text += (
                 "**👑 Для администраторов:**\n"
                 "🕹️ `/admin` - Открыть панель управления радио.\n"
+                "🧪 `/test [запрос]` - Тестирование поиска.\n"
             )
         help_text += "\nПросто отправьте команду, и я начну работу!"
 
@@ -153,34 +156,56 @@ class BotHandlers:
         status_text = await self._get_status_text()
         await update.message.reply_text(status_text, parse_mode=ParseMode.MARKDOWN)
 
-    async def radio_test(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Тест скорости радио."""
+    async def radio_refresh(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Принудительное обновление плейлиста радио."""
         user_id = update.effective_user.id
         if not is_admin(user_id):
+            await update.message.reply_text("⛔ Доступно только администраторам.")
             return
         
-        test_msg = await update.message.reply_text("⏱️ Тестирование скорости радио...")
+        logger.info(f"Команда /refresh от {user_id}")
         
-        # Тест поиска
-        start = time.time()
-        tracks = await self.youtube.search("synthwave music", limit=5)
-        search_time = time.time() - start
+        await update.message.reply_text("🔄 Принудительно обновляю плейлист радио...")
         
-        # Тест загрузки
-        if tracks:
-            start = time.time()
-            result = await self.youtube.download_with_retry(f"{tracks[0].artist} - {tracks[0].title}")
-            download_time = time.time() - start
+        # Очищаем текущий плейлист
+        self.state.radio.playlist = []
         
-        report = (
-            f"📊 **Отчет о скорости:**\n"
-            f"• Поиск: {search_time:.1f}с\n"
-            f"• Загрузка: {download_time:.1f}с\n"
-            f"• Найдено треков: {len(tracks)}\n"
-            f"• Источник: {self.state.radio.current_genre or 'не установлен'}"
-        )
+        # Запрашиваем новый
+        await self.radio._fetch_playlist()
         
-        await test_msg.edit_text(report, parse_mode=ParseMode.MARKDOWN)
+        if self.state.radio.playlist:
+            await update.message.reply_text(
+                f"✅ Плейлист обновлен. {len(self.state.radio.playlist)} треков "
+                f"в жанре '{self.state.radio.current_genre}'."
+            )
+        else:
+            await update.message.reply_text("❌ Не удалось обновить плейлист.")
+
+    async def test_search(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Команда для тестирования поиска."""
+        query = " ".join(context.args) if context.args else "rock music"
+        user_id = update.effective_user.id
+        
+        if not is_admin(user_id):
+            await update.message.reply_text("⛔ Доступно только администраторам.")
+            return
+        
+        test_msg = await update.message.reply_text(f"🔍 Тестовый поиск: {query}")
+        
+        start_time = time.time()
+        result = await self.youtube.search(query, limit=5)
+        search_time = time.time() - start_time
+        
+        if result:
+            response = f"✅ Найдено {len(result)} треков за {search_time:.1f}с:\n\n"
+            for i, track in enumerate(result[:5], 1):
+                mins = track.duration // 60
+                secs = track.duration % 60
+                response += f"{i}. {track.display_name} ({mins}:{secs:02d})\n"
+        else:
+            response = f"❌ Не найдено треков для '{query}' за {search_time:.1f}с"
+        
+        await test_msg.edit_text(response)
 
     # --- Обработчики колбэков и событий ---
 
@@ -206,7 +231,7 @@ class BotHandlers:
                 status_text = await self._get_status_text()
                 await query.edit_message_text(
                     status_text,
-                    reply_markup=query.message.reply_markup, # Оставляем текущую клавиатуру
+                    reply_markup=query.message.reply_markup,
                     parse_mode=ParseMode.MARKDOWN
                 )
 
@@ -273,6 +298,9 @@ class BotHandlers:
         radio_status = '🟢 Включено' if self.state.radio.is_on else '🔴 Выключено'
         if self.state.radio.is_on and self.state.radio.current_genre:
             radio_status += f" (жанр: *{self.state.radio.current_genre}*)"
+        
+        if self.state.radio.is_on and self.state.radio.playlist:
+            radio_status += f" (осталось треков: *{len(self.state.radio.playlist)}*)"
 
         sys_status = "• `psutil` не установлен, системная инфо недоступна."
         try:
@@ -285,15 +313,16 @@ class BotHandlers:
         return (
             f"**📊 Статус Бота**\n\n"
             f"*Система:*\n{sys_status}\n\n"
-            f"*Радио:*\n• Статус: {radio_status}"
+            f"*Радио:*\n• Статус: {radio_status}\n"
+            f"• Источник: *{settings.RADIO_SOURCE}*"
         )
 
     async def _send_audio(self, context: ContextTypes.DEFAULT_TYPE, chat_id: int, search_msg: Message, result: DownloadResult):
         try:
             file_path = result.file_path
             if not os.path.exists(file_path):
-                 await search_msg.edit_text("❌ Ошибка: загруженный файл не найден.")
-                 return
+                await search_msg.edit_text("❌ Ошибка: загруженный файл не найден.")
+                return
 
             file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
             if file_size_mb > 49.5:
