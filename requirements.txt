@@ -1,0 +1,10 @@
+# ======== Core Dependencies ========
+python-telegram-bot==21.3
+yt-dlp==2024.07.25
+python-dotenv==1.0.1
+aiohttp==3.9.5
+aiosqlite==0.20.0
+
+# ======== Optional System Monitoring ========
+# Install this if you want to see CPU/RAM usage in the /status command
+psutil==6.0.0
