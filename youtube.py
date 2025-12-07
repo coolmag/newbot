@@ -74,9 +74,6 @@ class YouTubeDownloader(BaseDownloader):
             },
             "no_check_certificate": False,
             "prefer_insecure": False,
-            'match_filter': yt_dlp.utils.match_filter_func(
-                f"duration > 60 & duration < {settings.RADIO_MAX_DURATION_S}"
-            ),
         }
         return options
 
