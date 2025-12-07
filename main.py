@@ -16,7 +16,6 @@ async def set_bot_commands(app: Application):
         BotCommand("start", "🚀 Запустить бота и показать справку"),
         BotCommand("help", "ℹ️ Показать справку"),
         BotCommand("play", "🎵 Найти и скачать трек"),
-        BotCommand("audiobook", "📚 Найти и скачать аудиокнигу"),
         BotCommand("menu", "🎛️ Показать главное меню"),
         BotCommand("status", "📊 Показать статус бота"),
         BotCommand("admin", "👑 Открыть панель администратора"),

@@ -8,7 +8,7 @@ from telegram.constants import ParseMode, ChatMemberStatus
 from telegram.error import BadRequest, Forbidden
 
 from config import settings
-from keyboards import get_main_menu_keyboard, get_admin_panel_keyboard, get_audiobook_chapters_keyboard
+from keyboards import get_main_menu_keyboard, get_admin_panel_keyboard
 from states import BotState
 from youtube import YouTubeDownloader
 from base import DownloadResult
@@ -52,7 +52,6 @@ class BotHandlers:
             CommandHandler(["start", "help"], self.show_help),
             CommandHandler("menu", self.show_menu),
             CommandHandler(["play", "p"], self.handle_play),
-            CommandHandler(["audiobook", "ab"], self.handle_audiobook),
             CommandHandler("admin", self.show_admin_panel),
             CommandHandler(["status", "stat"], self.handle_status),
             CallbackQueryHandler(self.handle_callback),
@@ -79,8 +78,7 @@ class BotHandlers:
             "🎵 **Добро пожаловать в Groove AI!**\n\n"
             "Я ваш персональный музыкальный ассистент. Вот что я умею:\n\n"
             "**Основные команды:**\n"
-            "📖 `/play` (`/p`) - Найти и скачать трек.\n"
-            "🎧 `/audiobook` (`/ab`) - Найти аудиокнигу и выбрать главу для скачивания.\n\n"
+            "🎶 `/play` (`/p`) - Найти и скачать трек.\n\n"
             "**Меню и статус:**\n"
             "🎛️ `/menu` - Показать главное меню.\n"
             "📊 `/status` (`/stat`) - Узнать текущий статус.\n\n"
@@ -137,27 +135,6 @@ class BotHandlers:
             await self._send_audio(context, update.effective_chat.id, search_msg, result)
         else:
             await search_msg.edit_text(f"❌ Не удалось найти `{query}`. {result.error}", parse_mode=ParseMode.MARKDOWN)
-
-    async def handle_audiobook(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        is_valid, query = validate_query(" ".join(context.args), "audiobook")
-        if not is_valid:
-            await update.message.reply_text(query, parse_mode=ParseMode.MARKDOWN)
-            return
-
-        search_msg = await update.message.reply_text(f"📚 Ищу плейлисты с аудиокнигой: `{query}`...", parse_mode=ParseMode.MARKDOWN)
-        
-        chapters = await self.youtube.search_playlist(query)
-        
-        if not chapters:
-            await search_msg.edit_text(f"❌ Не нашел плейлистов с аудиокнигой `{query}`.", parse_mode=ParseMode.MARKDOWN)
-            return
-            
-        context.user_data['audiobook_chapters'] = chapters
-        
-        await search_msg.edit_text(
-            f"📖 Нашел плейлист! Выберите главу для скачивания:",
-            reply_markup=get_audiobook_chapters_keyboard(chapters, page=0)
-        )
     
     async def handle_status(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         status_text = await self._get_status_text()
@@ -222,31 +199,6 @@ class BotHandlers:
                         reply_markup=get_admin_panel_keyboard(self.state.radio.is_on),
                         parse_mode=ParseMode.MARKDOWN,
                     )
-            
-            # Аудиокниги
-            elif action.startswith('ab_'):
-                chapters = context.user_data.get('audiobook_chapters', [])
-                if not chapters:
-                    await query.edit_message_text("❌ Ошибка: список глав не найден. Попробуйте поискать заново.")
-                    return
-
-                if action.startswith('ab_page_'):
-                    page = int(action.split('_')[-1])
-                    await query.edit_message_text(
-                        "📖 Выберите главу:",
-                        reply_markup=get_audiobook_chapters_keyboard(chapters, page=page)
-                    )
-                elif action.startswith('ab_download_'):
-                    video_id = action.split('_')[-1]
-                    await query.edit_message_text(f"⏳ Скачиваю главу...", reply_markup=None)
-                    result = await self.youtube.download_single_video(video_id)
-                    if result.success:
-                        await self._send_audio(context, update.effective_chat.id, query.message, result)
-                    else:
-                        await query.message.reply_text(f"❌ Не удалось скачать главу. {result.error}")
-                elif action == 'ab_cancel':
-                    await query.edit_message_text("✅ Выбор главы отменен.")
-                    context.user_data.pop('audiobook_chapters', None)
 
         except BadRequest as e:
             if "Message is not modified" in str(e):
