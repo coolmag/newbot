@@ -3,7 +3,7 @@ import glob
 import logging
 import random
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import aiohttp
 import yt_dlp
