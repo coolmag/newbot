@@ -14,7 +14,7 @@ from handlers import (
 from config import get_settings
 from constants import AdminCallback
 from container import create_container
-from logging import setup_logging
+from log_config import setup_logging
 from cache import CacheService
 from radio import RadioService
 
@@ -37,6 +37,14 @@ async def main() -> None:
     """Основная функция запуска бота."""
     settings = get_settings()
     setup_logging(settings)
+
+    # Создаем cookies.txt из переменной окружения
+    if settings.COOKIES_CONTENT:
+        try:
+            settings.COOKIES_FILE.write_text(settings.COOKIES_CONTENT)
+            logger.info("✅ Файл cookies.txt успешно создан из переменной окружения.")
+        except Exception as e:
+            logger.error(f"❌ Не удалось создать cookies.txt: {e}")
 
     logger.info("🚀 Запуск Music Bot v4.0...")
 

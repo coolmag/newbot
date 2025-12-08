@@ -14,13 +14,14 @@ class Settings(BaseSettings):
 
     # --- Необязательные переменные ---
     ADMIN_IDS: List[int] = []
+    COOKIES_CONTENT: str = ""
 
     # --- Пути ---
     BASE_DIR: Path = Path(__file__).resolve().parent
     DOWNLOADS_DIR: Path = BASE_DIR / "downloads"
     CACHE_DB_PATH: Path = BASE_DIR / "cache.db"
     LOG_FILE_PATH: Path = BASE_DIR / "bot.log"
-    COOKIES_FILE: Path | None = None
+    COOKIES_FILE: Path = BASE_DIR / "cookies.txt"
 
     # --- Настройки логгера ---
     LOG_LEVEL: str = "INFO"
