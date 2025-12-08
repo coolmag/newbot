@@ -139,51 +139,55 @@ class RadioService:
                 logger.error(f"Не удалось удалить файл {result.file_path}: {e}")
 
     async def _radio_loop(self, chat_id: int):
-        """Основной цикл радио с проактивной подгрузкой."""
+        """Основной цикл радио с проактивной подгрузкой и отказоустойчивостью."""
         await self._bot.send_message(chat_id, "🎵 Радио запускается...")
         
         while self._is_on and self.error_count < 10:
             try:
-                # Проактивно пополняем плейлист
+                # Если плейлист почти пуст, пытаемся его пополнить
                 if len(self._playlist) < 10:
-                    await self._fetch_playlist()
-
+                    logger.info("[Радио] Плейлист на исходе, запускаю пополнение...")
+                    # Делаем несколько попыток с разными запросами, прежде чем сдаться
+                    for attempt in range(3):
+                        await self._fetch_playlist()
+                        if self._playlist: # Если удалось что-то найти, выходим из цикла попыток
+                            break
+                        logger.warning(f"[Радио] Попытка пополнения #{attempt + 1} не дала результатов.")
+                        await asyncio.sleep(2) # Небольшая пауза между попытками
+                
+                # Если после всех попыток плейлист все еще пуст, берем большую паузу
                 if not self._playlist:
-                    logger.warning(f"[Радио] Плейлист пуст. Беру паузу. Попытка {self.error_count + 1}/10")
-                    # Увеличиваем паузу при каждой неудаче, чтобы не спамить запросами
-                    await asyncio.sleep(self._settings.RETRY_DELAY_S * (self.error_count + 1) * random.uniform(1, 1.5))
+                    logger.warning(f"[Радио] Плейлист пуст. Беру паузу. Общее число ошибок: {self.error_count + 1}/10")
+                    await asyncio.sleep(self._settings.RETRY_DELAY_S * (self.error_count + 1))
                     continue
-
+                
                 track_to_play = self._playlist.pop(0)
                 
-                # Добавляем ID в список проигранных, чтобы избежать повторов
                 if track_to_play.identifier:
                     self._played_ids.add(track_to_play.identifier)
-                    # Ограничиваем размер истории, чтобы не есть много памяти
                     if len(self._played_ids) > 200:
                         self._played_ids.pop()
 
                 logger.info(f"[Радио] Скачиваю: {track_to_play.display_name} (ID: {track_to_play.identifier})")
-                # Теперь мы скачиваем по ID, а не по названию
                 result = await self._downloader.download_with_retry(track_to_play.identifier)
 
                 if result.success:
                     await self._send_audio(chat_id, result)
-                    self.error_count = 0  # Сбрасываем счетчик ошибок при успехе
+                    self.error_count = 0
                     
                     try:
-                        # Ждем либо пропуска, либо окончания кулдауна
                         await asyncio.wait_for(
                             self._skip_event.wait(), timeout=self._settings.RADIO_COOLDOWN_S
                         )
                         self._skip_event.clear()
                         logger.info("[Радио] Трек пропущен по запросу.")
                     except asyncio.TimeoutError:
-                        pass  # Просто продолжаем, если никто не пропустил
+                        pass
                 else:
                     logger.warning(f"[Радио] Ошибка скачивания: {result.error}")
                     self.error_count += 1
                     await asyncio.sleep(3)
+
 
             except asyncio.CancelledError:
                 logger.info("[Радио] Цикл остановлен.")

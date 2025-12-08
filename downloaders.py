@@ -129,7 +129,8 @@ class YouTubeDownloader(BaseDownloader):
                     identifier=e.get("id"),
                 ))
             return results
-        except Exception:
+        except Exception as e:
+            logger.error(f"[YouTube] Ошибка поиска для '{query}': {e}", exc_info=True)
             return []
 
     async def download(self, query_or_id: str) -> DownloadResult:
