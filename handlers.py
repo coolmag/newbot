@@ -121,3 +121,30 @@ class AdminCallbackHandler(BaseHandler):
             reply_markup=get_admin_panel_keyboard(self._radio.is_on),
             parse_mode=ParseMode.MARKDOWN,
         )
+
+
+class MenuCallbackHandler(BaseHandler):
+    def __init__(self, settings: Settings, radio_service: RadioService):
+        super().__init__(settings)
+        self._radio = radio_service
+
+    async def handle(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        query = update.callback_query
+        await query.answer()
+
+        action = query.data
+        if action == MenuCallback.ADMIN_PANEL:
+            if not self.is_admin(update):
+                return
+            await query.edit_message_text(
+                "👑 **Админ-панель**",
+                reply_markup=get_admin_panel_keyboard(self._radio.is_on),
+                parse_mode=ParseMode.MARKDOWN,
+            )
+        elif action == MenuCallback.REFRESH:
+            # Just edit the message to show it's refreshed
+            await query.edit_message_text(
+                "🎛️ **Главное меню (обновлено)**",
+                reply_markup=get_main_menu_keyboard(self.is_admin(update)),
+                parse_mode=ParseMode.MARKDOWN,
+            )

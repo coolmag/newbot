@@ -28,7 +28,7 @@ class BaseDownloader(ABC):
         self.semaphore = asyncio.Semaphore(3)
 
     @abstractmethod
-    async def search(self, query: str, limit: int = 30) -> List[TrackInfo]:
+    async def search(self, query: str, limit: int = 30, max_duration: Optional[int] = None) -> List[TrackInfo]:
         raise NotImplementedError
 
     @abstractmethod
@@ -94,22 +94,32 @@ class YouTubeDownloader(BaseDownloader):
             None, lambda: yt_dlp.YoutubeDL(ydl_opts).extract_info(query, download=False)
         )
 
-    async def search(self, query: str, limit: int = 30) -> List[TrackInfo]:
+    async def search(self, query: str, limit: int = 30, max_duration: Optional[int] = None) -> List[TrackInfo]:
         search_query = f"ytsearch{limit}:{query}"
         try:
             info = await self._extract_info(search_query, self._ydl_opts_search)
             entries = info.get("entries", []) or []
-            return [
-                TrackInfo(
+            
+            results = []
+            for e in entries:
+                if not (e and e.get("id") and e.get("title")):
+                    continue
+                
+                duration = int(e.get("duration", 0))
+                if duration <= 0:
+                    continue
+
+                if max_duration and duration > max_duration:
+                    continue
+
+                results.append(TrackInfo(
                     title=e["title"],
                     artist=e.get("uploader", "Unknown"),
-                    duration=int(e.get("duration", 0)),
+                    duration=duration,
                     source=Source.YOUTUBE.value,
                     identifier=e.get("id"),
-                )
-                for e in entries
-                if e and e.get("id") and e.get("title") and e.get("duration", 0) > 0
-            ]
+                ))
+            return results
         except Exception:
             return []
 
@@ -162,7 +172,7 @@ class InternetArchiveDownloader(BaseDownloader):
             self._session = aiohttp.ClientSession()
         return self._session
 
-    async def search(self, query: str, limit: int = 30) -> List[TrackInfo]:
+    async def search(self, query: str, limit: int = 30, max_duration: Optional[int] = None) -> List[TrackInfo]:
         params = {
             "q": f'mediatype:audio AND (subject:("{query}") OR title:("{query}"))',
             "fl[]": "identifier,title,creator,length",

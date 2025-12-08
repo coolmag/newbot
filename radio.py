@@ -86,7 +86,11 @@ class RadioService:
         logger.info(f"[Радио] Ищу треки по запросу: '{search_query}'")
         
         # Увеличиваем лимит, чтобы получить больше треков
-        new_tracks = await self._downloader.search(search_query, limit=50)
+        new_tracks = await self._downloader.search(
+            search_query, 
+            limit=50, 
+            max_duration=self._settings.RADIO_MAX_DURATION_S
+        )
         
         if new_tracks:
             # Фильтруем треки, которые уже были в плейлисте
