@@ -82,8 +82,6 @@ class YouTubeDownloader(BaseDownloader):
             "prefer_insecure": True,
             # Явно запрещаем обработку плейлистов
             "noplaylist": True,
-            # Фильтруем по категории "Музыка"
-            "match_filter": yt_dlp.utils.match_filter_func("category = 'Music'"),
         }
         if is_search:
             # "extract_flat": True заставляет yt-dlp не лезть вглубь, а просто отдать список видео

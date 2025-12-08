@@ -2,7 +2,7 @@
 FROM python:3.11-slim as builder
 
 # Установка системных зависимостей
-RUN apt-get update && apt-get install -y --no-install-recommends build-essential ffmpeg
+RUN apt-get update && apt-get install -y --no-install-recommends build-essential ffmpeg nodejs npm
 
 WORKDIR /app
 
