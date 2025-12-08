@@ -1,0 +1,229 @@
+import asyncio
+import glob
+import logging
+import random
+from abc import ABC, abstractmethod
+from typing import Any, Dict, List
+
+import aiohttp
+import yt_dlp
+
+from config import Settings
+from models import DownloadResult, Source, TrackInfo
+from cache import CacheService
+
+logger = logging.getLogger(__name__)
+
+
+class BaseDownloader(ABC):
+    """
+    Абстрактный базовый класс для всех загрузчиков.
+    Предоставляет общий интерфейс и логику повторных попыток.
+    """
+
+    def __init__(self, settings: Settings, cache_service: CacheService):
+        self._settings = settings
+        self._cache = cache_service
+        self.name = self.__class__.__name__
+        self.semaphore = asyncio.Semaphore(3)
+
+    @abstractmethod
+    async def search(self, query: str, limit: int = 30) -> List[TrackInfo]:
+        raise NotImplementedError
+
+    @abstractmethod
+    async def download(self, query: str) -> DownloadResult:
+        raise NotImplementedError
+
+    async def download_with_retry(self, query: str) -> DownloadResult:
+        for attempt in range(self._settings.MAX_RETRIES):
+            try:
+                async with self.semaphore:
+                    result = await self.download(query)
+                if result and result.success:
+                    return result
+            except (asyncio.TimeoutError, Exception):
+                pass
+            if attempt < self._settings.MAX_RETRIES - 1:
+                await asyncio.sleep(self._settings.RETRY_DELAY_S * (attempt + 1))
+        return DownloadResult(
+            success=False,
+            error=f"Не удалось скачать после {self._settings.MAX_RETRIES} попыток.",
+        )
+
+
+class YouTubeDownloader(BaseDownloader):
+    """
+    Загрузчик для YouTube.
+    """
+
+    def __init__(self, settings: Settings, cache_service: CacheService):
+        super().__init__(settings, cache_service)
+        self._ydl_opts_search = self._get_ydl_options(is_search=True)
+        self._ydl_opts_download = self._get_ydl_options(is_search=False)
+
+    def _get_ydl_options(self, is_search: bool) -> Dict[str, Any]:
+        options = {
+            "quiet": True,
+            "no_warnings": True,
+            "ignoreerrors": True,
+            "socket_timeout": 30,
+            "retries": self._settings.MAX_RETRIES,
+            "noplaylist": True,
+            "source_address": "0.0.0.0",
+            "max_filesize": self._settings.MAX_FILE_SIZE_MB * 1024 * 1024,
+            "user_agent": "Mozilla/5.0",
+            "no_check_certificate": True,
+            "prefer_insecure": True,
+        }
+        if is_search:
+            options["extract_flat"] = True
+        else:
+            options["format"] = "bestaudio/best"
+            options["postprocessors"] = [
+                {"key": "FFmpegExtractAudio", "preferredcodec": "mp3"}
+            ]
+            options["outtmpl"] = str(self._settings.DOWNLOADS_DIR / "%(id)s.%(ext)s")
+            if self._settings.COOKIES_FILE and self._settings.COOKIES_FILE.exists():
+                options["cookiefile"] = str(self._settings.COOKIES_FILE)
+        return options
+
+    async def _extract_info(self, query: str, ydl_opts: Dict) -> Dict:
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            None, lambda: yt_dlp.YoutubeDL(ydl_opts).extract_info(query, download=False)
+        )
+
+    async def search(self, query: str, limit: int = 30) -> List[TrackInfo]:
+        search_query = f"ytsearch{limit}:{query}"
+        try:
+            info = await self._extract_info(search_query, self._ydl_opts_search)
+            entries = info.get("entries", []) or []
+            return [
+                TrackInfo(
+                    title=e["title"],
+                    artist=e.get("uploader", "Unknown"),
+                    duration=int(e.get("duration", 0)),
+                    source=Source.YOUTUBE.value,
+                )
+                for e in entries
+                if e and e.get("id") and e.get("title") and e.get("duration", 0) > 0
+            ]
+        except Exception:
+            return []
+
+    async def download(self, query: str) -> DownloadResult:
+        cached = await self._cache.get(query, Source.YOUTUBE)
+        if cached:
+            return cached
+        try:
+            info = await self._extract_info(f"ytsearch1:{query}", self._ydl_opts_download)
+            video_info = info["entries"][0]
+            video_id = video_info["id"]
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(
+                None,
+                lambda: yt_dlp.YoutubeDL(self._ydl_opts_download).download([video_info["webpage_url"]]),
+            )
+            mp3_file = next(
+                iter(glob.glob(str(self._settings.DOWNLOADS_DIR / f"{video_id}.mp3"))),
+                None,
+            )
+            if not mp3_file:
+                return DownloadResult(success=False, error="Файл не найден.")
+            track_info = TrackInfo(
+                title=video_info.get("title", "Unknown"),
+                artist=video_info.get("channel", "Unknown"),
+                duration=int(video_info.get("duration", 0)),
+                source=Source.YOUTUBE.value,
+            )
+            result = DownloadResult(True, mp3_file, track_info)
+            await self._cache.set(query, Source.YOUTUBE, result)
+            return result
+        except Exception as e:
+            return DownloadResult(success=False, error=str(e))
+
+
+class InternetArchiveDownloader(BaseDownloader):
+    """
+    Загрузчик для Internet Archive.
+    """
+
+    API_URL = "https://archive.org/advancedsearch.php"
+
+    def __init__(self, settings: Settings, cache_service: CacheService):
+        super().__init__(settings, cache_service)
+        self._session: aiohttp.ClientSession | None = None
+
+    async def _get_session(self) -> aiohttp.ClientSession:
+        if self._session is None or self._session.closed:
+            self._session = aiohttp.ClientSession()
+        return self._session
+
+    async def search(self, query: str, limit: int = 30) -> List[TrackInfo]:
+        params = {
+            "q": f'mediatype:audio AND (subject:("{query}") OR title:("{query}"))',
+            "fl[]": "identifier,title,creator,length",
+            "rows": limit,
+            "page": random.randint(1, 5),
+            "output": "json",
+        }
+        try:
+            session = await self._get_session()
+            async with session.get(self.API_URL, params=params) as response:
+                data = await response.json()
+            return [
+                TrackInfo(
+                    title=doc.get("title", "Unknown"),
+                    artist=doc.get("creator", "Unknown"),
+                    duration=int(float(doc.get("length", 0))),
+                    source=Source.INTERNET_ARCHIVE.value,
+                    identifier=doc.get("identifier"),
+                )
+                for doc in data.get("response", {}).get("docs", [])
+                if doc.get("length") and int(float(doc.get("length", 0))) > 0
+            ]
+        except Exception:
+            return []
+
+    async def download(self, query: str) -> DownloadResult:
+        cached = await self._cache.get(query, Source.INTERNET_ARCHIVE)
+        if cached:
+            return cached
+        
+        search_results = await self.search(query, limit=1)
+        if not search_results:
+            return DownloadResult(success=False, error="Ничего не найдено.")
+
+        track = search_results[0]
+        identifier = track.identifier
+        try:
+            session = await self._get_session()
+            metadata_url = f"https://archive.org/metadata/{identifier}"
+            async with session.get(metadata_url) as response:
+                metadata = await response.json()
+
+            mp3_file = next(
+                (f for f in metadata.get("files", []) if f.get("format", "").startswith("VBR MP3")), 
+                None
+            )
+            if not mp3_file:
+                return DownloadResult(success=False, error="MP3 файл не найден.")
+
+            file_path = self._settings.DOWNLOADS_DIR / f"{identifier}.mp3"
+            download_url = f"https://archive.org/download/{identifier}/{mp3_file['name']}"
+            
+            async with session.get(download_url) as response:
+                with open(file_path, "wb") as f:
+                    while chunk := await response.content.read(1024):
+                        f.write(chunk)
+            
+            result = DownloadResult(True, str(file_path), track)
+            await self._cache.set(query, Source.INTERNET_ARCHIVE, result)
+            return result
+        except Exception as e:
+            return DownloadResult(success=False, error=str(e))
+
+    async def close(self):
+        if self._session:
+            await self._session.close()

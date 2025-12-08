@@ -1,0 +1,15 @@
+from enum import Enum
+
+
+class MenuCallback(str, Enum):
+    """Callback data для главного меню."""
+    REFRESH = "menu:refresh"
+    ADMIN_PANEL = "menu:admin_panel"
+
+
+class AdminCallback(str, Enum):
+    """Callback data для админ-панели."""
+    MAIN_MENU = "admin:main_menu"
+    RADIO_ON = "admin:radio_on"
+    RADIO_OFF = "admin:radio_off"
+    RADIO_SKIP = "admin:radio_skip"

@@ -4,6 +4,9 @@ yt-dlp
 python-dotenv==1.0.1
 aiohttp==3.9.5
 aiosqlite==0.20.0
+pydantic==2.8.2
+pydantic-settings==2.3.4
+punq==0.6.0
 
 # ======== Optional System Monitoring ========
 # Install this if you want to see CPU/RAM usage in the /status command
