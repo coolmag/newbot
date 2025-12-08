@@ -51,53 +51,49 @@ async def main() -> None:
 
     logger.info("🚀 Запуск Music Bot v4.0...")
 
-    app = Application.builder().token(settings.BOT_TOKEN).build()
-    container = create_container(app.bot)
+    # Используем async with для корректного управления жизненным циклом приложения
+    async with Application.builder().token(settings.BOT_TOKEN).build() as app:
+        container = create_container(app.bot)
 
-    # --- Регистрация обработчиков ---
-    app.add_handler(CommandHandler(["start", "help"], container.resolve(StartHandler).handle))
-    app.add_handler(CommandHandler("play", container.resolve(PlayHandler).handle))
-    app.add_handler(CommandHandler("menu", container.resolve(MenuHandler).handle))
-    app.add_handler(CommandHandler("admin", container.resolve(AdminPanelHandler).handle))
-    app.add_handler(CallbackQueryHandler(container.resolve(AdminCallbackHandler).handle, pattern="^admin:.*"))
-    app.add_handler(CallbackQueryHandler(container.resolve(MenuCallbackHandler).handle, pattern="^menu:.*"))
-    app.add_handler(CallbackQueryHandler(container.resolve(TrackCallbackHandler).handle, pattern="^track:.*"))
-    app.add_handler(CallbackQueryHandler(container.resolve(GenreCallbackHandler).handle, pattern=f"^{GenreCallback.PREFIX}.*"))
+        # --- Регистрация обработчиков ---
+        app.add_handler(CommandHandler(["start", "help"], container.resolve(StartHandler).handle))
+        app.add_handler(CommandHandler("play", container.resolve(PlayHandler).handle))
+        app.add_handler(CommandHandler("menu", container.resolve(MenuHandler).handle))
+        app.add_handler(CommandHandler("admin", container.resolve(AdminPanelHandler).handle))
+        app.add_handler(CallbackQueryHandler(container.resolve(AdminCallbackHandler).handle, pattern="^admin:.*"))
+        app.add_handler(CallbackQueryHandler(container.resolve(MenuCallbackHandler).handle, pattern="^menu:.*"))
+        app.add_handler(CallbackQueryHandler(container.resolve(TrackCallbackHandler).handle, pattern="^track:.*"))
+        app.add_handler(CallbackQueryHandler(container.resolve(GenreCallbackHandler).handle, pattern=f"^{GenreCallback.PREFIX}.*"))
 
-    await set_bot_commands(app)
+        await set_bot_commands(app)
 
-    # --- Инициализация сервисов ---
-    cache_service = container.resolve(CacheService)
-    await cache_service.initialize()
-
-    # --- Запуск приложения ---
-    try:
-        await app.initialize()
-        await app.start()
-        await app.updater.start_polling()
-
-        logger.info("✅ Бот запущен и готов к работе.")
-        await asyncio.Event().wait()
-
-    except (KeyboardInterrupt, SystemExit):
-        pass
-    finally:
-        # --- Корректное завершение ---
-        logger.info("🛑 Останавливаю бота...")
-        if app.updater and app.updater.is_running():
-            await app.updater.stop()
-        if app.running:
-            await app.stop()
-        if not app.shutdown_called:
-            await app.shutdown()
-        
-        radio_service = container.resolve(RadioService)
-        await radio_service.stop()
-        
+        # --- Инициализация сервисов ---
         cache_service = container.resolve(CacheService)
-        await cache_service.close()
-        
-        logger.info("👋 Бот остановлен.")
+        await cache_service.initialize()
+
+        # --- Запуск приложения ---
+        try:
+            await app.start()
+            # Добавляем drop_pending_updates=True для предотвращения конфликтов
+            await app.updater.start_polling(drop_pending_updates=True)
+
+            logger.info("✅ Бот запущен и готов к работе.")
+            await asyncio.Event().wait()  # Бот будет работать до остановки вручную
+
+        except (KeyboardInterrupt, SystemExit):
+            logger.info("👋 Получен сигнал остановки (KeyboardInterrupt/SystemExit)...")
+        except Exception as e:
+            logger.critical(f"❌ Критическая ошибка при запуске бота: {e}", exc_info=True)
+        finally:
+            # --- Корректное завершение сервисов ---
+            logger.info("🛑 Останавливаю дополнительные сервисы...")
+            radio_service = container.resolve(RadioService)
+            await radio_service.stop()
+            
+            cache_service = container.resolve(CacheService)
+            await cache_service.close()
+            
+            logger.info("👋 Бот остановлен.")
 
 
 if __name__ == "__main__":
