@@ -38,8 +38,8 @@ class Settings(BaseSettings):
     DOWNLOAD_TIMEOUT_S: int = 120
 
     # --- Настройки повторных попыток ---
-    MAX_RETRIES: int = 3
-    RETRY_DELAY_S: float = 2.0
+    MAX_RETRIES: int = 5
+    RETRY_DELAY_S: float = 5.0
 
     # --- Настройки радио ---
     RADIO_SOURCE: str = "youtube"
