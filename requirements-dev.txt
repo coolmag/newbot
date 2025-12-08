@@ -1,8 +1,0 @@
-# This file can be used for development-specific dependencies.
-# For example, linters or testing frameworks.
-
-# pip install -r requirements-dev.txt
-
-# Example:
-# ruff
-# pytest
