@@ -81,7 +81,10 @@ class YouTubeDownloader(BaseDownloader):
             "no_check_certificate": True,
             "prefer_insecure": True,
             # Явно запрещаем обработку плейлистов
-            "noplaylist": True, 
+            "noplaylist": True,
+            # Фильтруем по категории "Музыка"
+            "match_filter": yt_dlp.utils.match_filter_func("category = 'Music'"),
+            "default_search": "ytmusic",
         }
         if is_search:
             # "extract_flat": True заставляет yt-dlp не лезть вглубь, а просто отдать список видео
@@ -104,7 +107,8 @@ class YouTubeDownloader(BaseDownloader):
         )
 
     async def search(self, query: str, limit: int = 30, max_duration: Optional[int] = None) -> List[TrackInfo]:
-        search_query = f"ytsearch{limit}:{query}"
+        # ytmusicsearch работает лучше для музыки
+        search_query = f"ytmusicsearch{limit}:{query}"
         try:
             info = await self._extract_info(search_query, self._ydl_opts_search)
             entries = info.get("entries", []) or []
