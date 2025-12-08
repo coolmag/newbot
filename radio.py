@@ -1,14 +1,15 @@
 import asyncio
 import logging
 import random
-from typing import Optional
+import os
+from typing import Optional, Set
 
 from telegram import Bot
 from telegram.constants import ParseMode
 from telegram.error import TelegramError
 
 from config import Settings
-from models import DownloadResult
+from models import DownloadResult, TrackInfo
 from downloaders import BaseDownloader
 
 logger = logging.getLogger(__name__)
@@ -26,7 +27,8 @@ class RadioService:
         self._task: Optional[asyncio.Task] = None
         self._is_on = False
         self._skip_event = asyncio.Event()
-        self._playlist: list = []
+        self._playlist: list[TrackInfo] = []
+        self._played_ids: Set[str] = set()
         self._current_genre: Optional[str] = None
         self.error_count = 0
 
@@ -42,7 +44,11 @@ class RadioService:
         self._is_on = True
         self._skip_event.clear()
         self.error_count = 0
+        self._playlist = []
+        self._played_ids = set()
         self._task = asyncio.create_task(self._radio_loop(chat_id))
+        logger.info(f"✅ Радио-задача создана и запущена для чата {chat_id}.")
+
 
     async def stop(self):
         """Останавливает радио."""
@@ -54,6 +60,7 @@ class RadioService:
             except asyncio.CancelledError:
                 pass
             self._task = None
+        logger.info("⏹️ Радио остановлено.")
 
     async def skip(self):
         """Пропускает текущий трек."""
@@ -61,15 +68,41 @@ class RadioService:
             self._skip_event.set()
 
     async def _fetch_playlist(self):
-        """Запрашивает новый плейлист."""
+        """
+        Запрашивает новый плейлист, используя более "умные" поисковые запросы.
+        """
         genre = random.choice(self._settings.RADIO_GENRES)
         self._current_genre = genre
-        self._playlist = await self._downloader.search(genre, limit=20)
-        if not self._playlist:
+        
+        # Усложняем запросы для получения лучших результатов
+        query_templates = [
+            f"{genre} music mix",
+            f"best of {genre}",
+            f"{genre} playlist",
+            f"chill {genre} beats",
+        ]
+        search_query = random.choice(query_templates)
+        
+        logger.info(f"[Радио] Ищу треки по запросу: '{search_query}'")
+        
+        # Увеличиваем лимит, чтобы получить больше треков
+        new_tracks = await self._downloader.search(search_query, limit=50)
+        
+        if new_tracks:
+            # Фильтруем треки, которые уже были в плейлисте
+            unique_tracks = [track for track in new_tracks if track.identifier not in self._played_ids]
+            self._playlist.extend(unique_tracks)
+            logger.info(f"[Радио] Добавлено {len(unique_tracks)} уникальных треков в плейлист. Всего: {len(self._playlist)}")
+        else:
+            logger.warning(f"[Радио] Не удалось получить плейлист для запроса '{search_query}'.")
             self.error_count += 1
 
     async def _send_audio(self, chat_id: int, result: DownloadResult):
-        """Отправляет аудиофайл в чат."""
+        """Отправляет аудиофайл в чат и удаляет его после отправки."""
+        if not result.file_path or not os.path.exists(result.file_path):
+            logger.error(f"[Радио] Файл для отправки не найден: {result.file_path}")
+            return
+
         try:
             with open(result.file_path, "rb") as audio_file:
                 await self._bot.send_audio(
@@ -83,49 +116,72 @@ class RadioService:
                 )
         except TelegramError as e:
             logger.error(f"Ошибка Telegram при отправке радио-аудио: {e}")
-            raise
+            # Не увеличиваем счетчик ошибок, если это проблема с Telegram
         finally:
-            # Clean up the downloaded file
-            pass
+            try:
+                os.remove(result.file_path)
+            except OSError as e:
+                logger.error(f"Не удалось удалить файл {result.file_path}: {e}")
 
     async def _radio_loop(self, chat_id: int):
-        """Основной цикл радио."""
+        """Основной цикл радио с проактивной подгрузкой."""
         await self._bot.send_message(chat_id, "🎵 Радио запускается...")
+        
         while self._is_on and self.error_count < 10:
             try:
-                if not self._playlist:
+                # Проактивно пополняем плейлист
+                if len(self._playlist) < 10:
                     await self._fetch_playlist()
-                    if not self._playlist:
-                        await asyncio.sleep(self._settings.RETRY_DELAY_S)
-                        continue
+
+                if not self._playlist:
+                    logger.warning(f"[Радио] Плейлист пуст. Попытка {self.error_count + 1}/10")
+                    await asyncio.sleep(self._settings.RETRY_DELAY_S)
+                    continue
 
                 track_to_play = self._playlist.pop(0)
+                
+                # Добавляем ID в список проигранных, чтобы избежать повторов
+                if track_to_play.identifier:
+                    self._played_ids.add(track_to_play.identifier)
+                    # Ограничиваем размер истории, чтобы не есть много памяти
+                    if len(self._played_ids) > 200:
+                        self._played_ids.pop()
+
+                logger.info(f"[Радио] Скачиваю: {track_to_play.display_name}")
                 result = await self._downloader.download_with_retry(track_to_play.display_name)
 
                 if result.success:
                     await self._send_audio(chat_id, result)
-                    self.error_count = 0
+                    self.error_count = 0  # Сбрасываем счетчик ошибок при успехе
+                    
                     try:
+                        # Ждем либо пропуска, либо окончания кулдауна
                         await asyncio.wait_for(
                             self._skip_event.wait(), timeout=self._settings.RADIO_COOLDOWN_S
                         )
                         self._skip_event.clear()
+                        logger.info("[Радио] Трек пропущен по запросу.")
                     except asyncio.TimeoutError:
-                        pass
+                        pass  # Просто продолжаем, если никто не пропустил
                 else:
+                    logger.warning(f"[Радио] Ошибка скачивания: {result.error}")
                     self.error_count += 1
                     await asyncio.sleep(3)
 
             except asyncio.CancelledError:
+                logger.info("[Радио] Цикл остановлен.")
                 break
             except Exception as e:
-                logger.error(f"Ошибка в цикле радио: {e}", exc_info=True)
+                logger.error(f"Непредвиденная ошибка в цикле радио: {e}", exc_info=True)
                 self.error_count += 1
                 await asyncio.sleep(5)
 
         if self.error_count >= 10:
+            logger.error("[Радио] Превышено максимальное количество ошибок. Радио остановлено.")
             await self._bot.send_message(
                 chat_id,
-                "⚠️ Радио остановлено из-за слишком большого количества ошибок.",
+                "⚠️ Радио было остановлено из-за большого количества ошибок при скачивании."
             )
+        
         self._is_on = False
+        logger.info(f"⏹️ Радио-цикл завершен для чата {chat_id}.")

@@ -105,6 +105,7 @@ class YouTubeDownloader(BaseDownloader):
                     artist=e.get("uploader", "Unknown"),
                     duration=int(e.get("duration", 0)),
                     source=Source.YOUTUBE.value,
+                    identifier=e.get("id"),
                 )
                 for e in entries
                 if e and e.get("id") and e.get("title") and e.get("duration", 0) > 0
@@ -136,6 +137,7 @@ class YouTubeDownloader(BaseDownloader):
                 artist=video_info.get("channel", "Unknown"),
                 duration=int(video_info.get("duration", 0)),
                 source=Source.YOUTUBE.value,
+                identifier=video_id,
             )
             result = DownloadResult(True, mp3_file, track_info)
             await self._cache.set(query, Source.YOUTUBE, result)
