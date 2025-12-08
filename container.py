@@ -44,7 +44,8 @@ def create_container(bot: Bot) -> punq.Container:
 
 
     # --- Downloader Factory ---
-    def get_downloader(settings: Settings) -> BaseDownloader:
+    def get_downloader() -> BaseDownloader:
+        settings = container.resolve(Settings)
         if settings.RADIO_SOURCE.lower() == "internet_archive":
             return container.resolve(InternetArchiveDownloader)
         return container.resolve(YouTubeDownloader)
