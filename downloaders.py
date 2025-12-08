@@ -132,18 +132,31 @@ class YouTubeDownloader(BaseDownloader):
         except Exception:
             return []
 
-    async def download(self, query: str) -> DownloadResult:
-        cached = await self._cache.get(query, Source.YOUTUBE)
+    async def download(self, query_or_id: str) -> DownloadResult:
+        # Если это похоже на ID, а не на поисковый запрос, кешируем по ID
+        # Это важно для радио, чтобы не кешировать один и тот же трек под разными поисковыми запросами
+        is_id = " " not in query_or_id and len(query_or_id) < 20 
+        cache_key = query_or_id if is_id else f"search:{query_or_id}"
+        
+        cached = await self._cache.get(cache_key, Source.YOUTUBE)
         if cached:
             return cached
+            
         try:
-            info = await self._extract_info(f"ytsearch1:{query}", self._ydl_opts_download)
-            video_info = info["entries"][0]
+            # Если это не ID, делаем поиск
+            if not is_id:
+                info = await self._extract_info(f"ytsearch1:{query_or_id}", self._ydl_opts_download)
+                video_info = info["entries"][0]
+            else: # Если это ID, получаем информацию напрямую
+                info = await self._extract_info(query_or_id, self._ydl_opts_download)
+                video_info = info
+
             video_id = video_info["id"]
+            
             loop = asyncio.get_running_loop()
             await loop.run_in_executor(
                 None,
-                lambda: yt_dlp.YoutubeDL(self._ydl_opts_download).download([video_info["webpage_url"]]),
+                lambda: yt_dlp.YoutubeDL(self._ydl_opts_download).download([video_id]),
             )
             mp3_file = next(
                 iter(glob.glob(str(self._settings.DOWNLOADS_DIR / f"{video_id}.mp3"))),
@@ -151,17 +164,19 @@ class YouTubeDownloader(BaseDownloader):
             )
             if not mp3_file:
                 return DownloadResult(success=False, error="Файл не найден.")
+            
             track_info = TrackInfo(
                 title=video_info.get("title", "Unknown"),
-                artist=video_info.get("channel", "Unknown"),
+                artist=video_info.get("channel", video_info.get("uploader", "Unknown")),
                 duration=int(video_info.get("duration", 0)),
                 source=Source.YOUTUBE.value,
                 identifier=video_id,
             )
             result = DownloadResult(True, mp3_file, track_info)
-            await self._cache.set(query, Source.YOUTUBE, result)
+            await self._cache.set(cache_key, Source.YOUTUBE, result)
             return result
         except Exception as e:
+            logger.error(f"Ошибка скачивания с YouTube: {e}", exc_info=True)
             return DownloadResult(success=False, error=str(e))
 
 

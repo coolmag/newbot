@@ -80,13 +80,18 @@ class RadioService:
 
     async def _fetch_playlist(self):
         """
-        Запрашивает новый плейлист.
+        Запрашивает новый плейлист, используя более "умные" поисковые запросы.
         """
         # Если жанр не установлен (первый запуск), выбираем случайный
         if not self._current_genre:
             self._current_genre = random.choice(self._settings.RADIO_GENRES)
 
-        search_query = self._current_genre
+        query_templates = [
+            f"{self._current_genre} music",
+            f"best of {self._current_genre}",
+            f"{self._current_genre} top tracks",
+        ]
+        search_query = random.choice(query_templates)
         
         logger.info(f"[Радио] Ищу треки по запросу: '{search_query}'")
         
@@ -158,8 +163,9 @@ class RadioService:
                     if len(self._played_ids) > 200:
                         self._played_ids.pop()
 
-                logger.info(f"[Радио] Скачиваю: {track_to_play.display_name}")
-                result = await self._downloader.download_with_retry(track_to_play.display_name)
+                logger.info(f"[Радио] Скачиваю: {track_to_play.display_name} (ID: {track_to_play.identifier})")
+                # Теперь мы скачиваем по ID, а не по названию
+                result = await self._downloader.download_with_retry(track_to_play.identifier)
 
                 if result.success:
                     await self._send_audio(chat_id, result)
