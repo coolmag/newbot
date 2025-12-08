@@ -114,7 +114,7 @@ class YouTubeDownloader(BaseDownloader):
                 if not (e and e.get("id") and e.get("title")):
                     continue
                 
-                duration = int(e.get("duration", 0))
+                duration = int(e.get("duration") or 0)
                 if duration <= 0:
                     continue
 
@@ -169,7 +169,7 @@ class YouTubeDownloader(BaseDownloader):
             track_info = TrackInfo(
                 title=video_info.get("title", "Unknown"),
                 artist=video_info.get("channel", video_info.get("uploader", "Unknown")),
-                duration=int(video_info.get("duration", 0)),
+                duration=int(video_info.get("duration") or 0),
                 source=Source.YOUTUBE.value,
                 identifier=video_id,
             )
