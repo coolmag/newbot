@@ -13,6 +13,12 @@ class AdminCallback(str, Enum):
     RADIO_ON = "admin:radio_on"
     RADIO_OFF = "admin:radio_off"
     RADIO_SKIP = "admin:radio_skip"
+    CHANGE_GENRE = "admin:change_genre"
+
+
+class GenreCallback:
+    """Префикс для колбэков выбора жанра."""
+    PREFIX = "genre:"
 
 
 class TrackCallback(str, Enum):

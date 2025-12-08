@@ -5,8 +5,8 @@ from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
 
 from config import Settings
-from keyboards import get_main_menu_keyboard, get_admin_panel_keyboard, get_track_control_keyboard
-from constants import AdminCallback, MenuCallback, TrackCallback
+from keyboards import get_main_menu_keyboard, get_admin_panel_keyboard, get_track_control_keyboard, get_genre_choice_keyboard
+from constants import AdminCallback, MenuCallback, TrackCallback, GenreCallback
 from downloaders import YouTubeDownloader
 from radio import RadioService
 
@@ -82,7 +82,7 @@ class MenuHandler(BaseHandler):
 
 
 class AdminPanelHandler(BaseHandler):
-    def __init__(self, settings: Settings, radio_service: RadioService):
+    def __init__(self(self, settings: Settings, radio_service: RadioService):
         super().__init__(settings)
         self._radio = radio_service
 
@@ -116,6 +116,13 @@ class AdminCallbackHandler(BaseHandler):
             await self._radio.stop()
         elif action == AdminCallback.RADIO_SKIP:
             await self._radio.skip()
+        elif action == AdminCallback.CHANGE_GENRE:
+            await query.edit_message_text(
+                "🎶 **Выберите жанр радио:**",
+                reply_markup=get_genre_choice_keyboard(),
+                parse_mode=ParseMode.MARKDOWN,
+            )
+            return  # Важно, чтобы не обновлять панель дважды
 
         await query.edit_message_text(
             "👑 **Админ-панель**",
@@ -149,6 +156,36 @@ class MenuCallbackHandler(BaseHandler):
                 reply_markup=get_main_menu_keyboard(self.is_admin(update)),
                 parse_mode=ParseMode.MARKDOWN,
             )
+
+
+class GenreCallbackHandler(BaseHandler):
+    def __init__(self, settings: Settings, radio_service: RadioService):
+        super().__init__(settings)
+        self._radio = radio_service
+
+    async def handle(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        query = update.callback_query
+        await query.answer()
+
+        if not self.is_admin(update):
+            return
+        
+        genre = query.data.split(GenreCallback.PREFIX)[1]
+        
+        if self._radio.set_genre(genre):
+             await query.edit_message_text(
+                f"✅ Жанр изменен на **{genre.capitalize()}**. Радио перезапускается с новым плейлистом...",
+                parse_mode=ParseMode.MARKDOWN,
+            )
+             # Возвращаемся в админ-панель через пару секунд
+             await asyncio.sleep(2)
+             await query.edit_message_text(
+                "👑 **Админ-панель**",
+                reply_markup=get_admin_panel_keyboard(self._radio.is_on),
+                parse_mode=ParseMode.MARKDOWN,
+             )
+        else:
+            await query.answer(f"❌ Не удалось сменить жанр на {genre}", show_alert=True)
 
 class TrackCallbackHandler(BaseHandler):
     async def handle(self, update: Update, context: ContextTypes.DEFAULT_TYPE):

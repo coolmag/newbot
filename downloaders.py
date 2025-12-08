@@ -76,19 +76,19 @@ class YouTubeDownloader(BaseDownloader):
             "no_warnings": True,
             "ignoreerrors": True,
             "socket_timeout": 30,
-            "retries": self._settings.MAX_RETRIES,
-            "noplaylist": True,
             "source_address": "0.0.0.0",
-            "max_filesize": self._settings.MAX_FILE_SIZE_MB * 1024 * 1024,
             "user_agent": "Mozilla/5.0",
             "no_check_certificate": True,
             "prefer_insecure": True,
-            "ratelimit": 10 * 1024 * 1024,  # Ограничение скорости 10 МБ/с
+            # Явно запрещаем обработку плейлистов
+            "noplaylist": True, 
         }
         if is_search:
+            # "extract_flat": True заставляет yt-dlp не лезть вглубь, а просто отдать список видео
             options["extract_flat"] = True
         else:
             options["format"] = "bestaudio/best"
+            options["max_filesize"] = self._settings.MAX_FILE_SIZE_MB * 1024 * 1024
             options["postprocessors"] = [
                 {"key": "FFmpegExtractAudio", "preferredcodec": "mp3"}
             ]

@@ -9,6 +9,7 @@ from handlers import (
     PlayHandler,
     StartHandler,
     TrackCallbackHandler,
+    GenreCallbackHandler,
 )
 from config import Settings, get_settings
 from cache_service import CacheService
@@ -45,6 +46,7 @@ def create_container(bot: Bot) -> punq.Container:
     container.register(AdminCallbackHandler)
     container.register(MenuCallbackHandler)
     container.register(TrackCallbackHandler)
+    container.register(GenreCallbackHandler)
 
 
     # --- Downloader Factory ---

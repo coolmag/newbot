@@ -68,21 +68,25 @@ class RadioService:
         if self._is_on:
             self._skip_event.set()
 
+    def set_genre(self, genre: str):
+        """Принудительно устанавливает жанр для следующего поиска."""
+        if genre in self._settings.RADIO_GENRES:
+            self._current_genre = genre
+            self._playlist = []  # Очищаем плейлист, чтобы сразу начать поиск по новому жанру
+            self._skip_event.set() # Прерываем ожидание, чтобы цикл начался заново
+            logger.info(f"[Радио] Установлен новый жанр: {genre}")
+            return True
+        return False
+
     async def _fetch_playlist(self):
         """
-        Запрашивает новый плейлист, используя более "умные" поисковые запросы.
+        Запрашивает новый плейлист.
         """
-        genre = random.choice(self._settings.RADIO_GENRES)
-        self._current_genre = genre
-        
-        # Усложняем запросы для получения лучших результатов
-        query_templates = [
-            f"{genre} music mix",
-            f"best of {genre}",
-            f"{genre} playlist",
-            f"chill {genre} beats",
-        ]
-        search_query = random.choice(query_templates)
+        # Если жанр не установлен (первый запуск), выбираем случайный
+        if not self._current_genre:
+            self._current_genre = random.choice(self._settings.RADIO_GENRES)
+
+        search_query = self._current_genre
         
         logger.info(f"[Радио] Ищу треки по запросу: '{search_query}'")
         

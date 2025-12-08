@@ -12,9 +12,10 @@ from handlers import (
     PlayHandler,
     StartHandler,
     TrackCallbackHandler,
+    GenreCallbackHandler,
 )
 from config import get_settings
-from constants import AdminCallback
+from constants import AdminCallback, GenreCallback
 from container import create_container
 from log_config import setup_logging
 from cache_service import CacheService
@@ -61,6 +62,7 @@ async def main() -> None:
     app.add_handler(CallbackQueryHandler(container.resolve(AdminCallbackHandler).handle, pattern="^admin:.*"))
     app.add_handler(CallbackQueryHandler(container.resolve(MenuCallbackHandler).handle, pattern="^menu:.*"))
     app.add_handler(CallbackQueryHandler(container.resolve(TrackCallbackHandler).handle, pattern="^track:.*"))
+    app.add_handler(CallbackQueryHandler(container.resolve(GenreCallbackHandler).handle, pattern=f"^{GenreCallback.PREFIX}.*"))
 
     await set_bot_commands(app)
 
