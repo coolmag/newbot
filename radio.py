@@ -11,6 +11,7 @@ from telegram.error import TelegramError
 from config import Settings
 from models import DownloadResult, TrackInfo
 from downloaders import BaseDownloader
+from keyboards import get_track_control_keyboard
 
 logger = logging.getLogger(__name__)
 
@@ -117,6 +118,7 @@ class RadioService:
                     duration=result.track_info.duration,
                     caption=f"🎶 *Радио | {self._current_genre}*\n\n`{result.track_info.display_name}`",
                     parse_mode=ParseMode.MARKDOWN,
+                    reply_markup=get_track_control_keyboard(),
                 )
         except TelegramError as e:
             logger.error(f"Ошибка Telegram при отправке радио-аудио: {e}")
@@ -138,8 +140,9 @@ class RadioService:
                     await self._fetch_playlist()
 
                 if not self._playlist:
-                    logger.warning(f"[Радио] Плейлист пуст. Попытка {self.error_count + 1}/10")
-                    await asyncio.sleep(self._settings.RETRY_DELAY_S)
+                    logger.warning(f"[Радио] Плейлист пуст. Беру паузу. Попытка {self.error_count + 1}/10")
+                    # Увеличиваем паузу при каждой неудаче, чтобы не спамить запросами
+                    await asyncio.sleep(self._settings.RETRY_DELAY_S * (self.error_count + 1) * random.uniform(1, 1.5))
                     continue
 
                 track_to_play = self._playlist.pop(0)

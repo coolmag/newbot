@@ -42,10 +42,18 @@ class BaseDownloader(ABC):
                     result = await self.download(query)
                 if result and result.success:
                     return result
-            except (asyncio.TimeoutError, Exception):
-                pass
+                
+                # Если yt-dlp вернул ошибку, содержащую код 503, делаем большую паузу
+                if result and result.error and "503" in result.error:
+                    logger.warning("[Downloader] Получен код 503 от сервера. Большая пауза...")
+                    await asyncio.sleep(60 * (attempt + 1)) # Пауза 1-3 минуты
+
+            except (asyncio.TimeoutError, Exception) as e:
+                logger.error(f"[Downloader] Исключение при загрузке: {e}", exc_info=True)
+            
             if attempt < self._settings.MAX_RETRIES - 1:
                 await asyncio.sleep(self._settings.RETRY_DELAY_S * (attempt + 1))
+
         return DownloadResult(
             success=False,
             error=f"Не удалось скачать после {self._settings.MAX_RETRIES} попыток.",
@@ -75,6 +83,7 @@ class YouTubeDownloader(BaseDownloader):
             "user_agent": "Mozilla/5.0",
             "no_check_certificate": True,
             "prefer_insecure": True,
+            "ratelimit": 10 * 1024 * 1024,  # Ограничение скорости 10 МБ/с
         }
         if is_search:
             options["extract_flat"] = True

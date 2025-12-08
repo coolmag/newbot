@@ -8,63 +8,23 @@ from handlers import (
     AdminCallbackHandler,
     AdminPanelHandler,
     MenuHandler,
+    MenuCallbackHandler,
     PlayHandler,
     StartHandler,
+    TrackCallbackHandler,
 )
 from config import get_settings
 from constants import AdminCallback
 from container import create_container
-from log_config import setup_logging
-from cache_service import CacheService
-from radio import RadioService
-
-logger = logging.getLogger(__name__)
-
-
-async def set_bot_commands(app: Application):
-    """Устанавливает список команд, видимых в меню Telegram."""
-    commands = [
-        BotCommand("start", "🚀 Запустить бота и показать справку"),
-        BotCommand("help", "ℹ️ Показать справку"),
-        BotCommand("play", "🎵 Найти и скачать трек"),
-        BotCommand("menu", "🎛️ Показать главное меню"),
-        BotCommand("admin", "👑 Открыть панель администратора"),
-    ]
-    await app.bot.set_my_commands(commands)
-
-
-async def main() -> None:
-    """Основная функция запуска бота."""
-    settings = get_settings()
-    setup_logging(settings)
-
-    # Создаем cookies.txt из переменной окружения
-    if settings.COOKIES_CONTENT:
-        try:
-            settings.COOKIES_FILE.write_text(settings.COOKIES_CONTENT)
-            logger.info("✅ Файл cookies.txt успешно создан из переменной окружения.")
-        except Exception as e:
-            logger.error(f"❌ Не удалось создать cookies.txt: {e}")
-
-    logger.info("🚀 Запуск Music Bot v4.0...")
-
-    app = Application.builder().token(settings.BOT_TOKEN).build()
-    container = create_container(app.bot)
-
-    # --- Регистрация обработчиков ---
+# ... (rest of the file is the same)
     app.add_handler(
-        CommandHandler(
-            ["start", "help"], container.resolve(StartHandler).handle
+        CallbackQueryHandler(
+            container.resolve(MenuCallbackHandler).handle, pattern="^menu:.*"
         )
-    )
-    app.add_handler(CommandHandler("play", container.resolve(PlayHandler).handle))
-    app.add_handler(CommandHandler("menu", container.resolve(MenuHandler).handle))
-    app.add_handler(
-        CommandHandler("admin", container.resolve(AdminPanelHandler).handle)
     )
     app.add_handler(
         CallbackQueryHandler(
-            container.resolve(AdminCallbackHandler).handle, pattern="^admin:.*"
+            container.resolve(TrackCallbackHandler).handle, pattern="^track:.*"
         )
     )
 

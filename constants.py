@@ -13,3 +13,11 @@ class AdminCallback(str, Enum):
     RADIO_ON = "admin:radio_on"
     RADIO_OFF = "admin:radio_off"
     RADIO_SKIP = "admin:radio_skip"
+
+
+class TrackCallback(str, Enum):
+    """Callback data для панели управления треком."""
+    LIKE = "track:like"
+    DISLIKE = "track:dislike"
+    ADD_TO_PLAYLIST = "track:add_to_playlist"
+    DELETE = "track:delete"

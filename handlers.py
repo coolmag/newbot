@@ -5,8 +5,8 @@ from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
 
 from config import Settings
-from keyboards import get_main_menu_keyboard, get_admin_panel_keyboard
-from constants import AdminCallback
+from keyboards import get_main_menu_keyboard, get_admin_panel_keyboard, get_track_control_keyboard
+from constants import AdminCallback, MenuCallback, TrackCallback
 from downloaders import YouTubeDownloader
 from radio import RadioService
 
@@ -63,6 +63,7 @@ class PlayHandler(BaseHandler):
                         duration=result.track_info.duration,
                         caption=f"✅ `{result.track_info.display_name}`",
                         parse_mode=ParseMode.MARKDOWN,
+                        reply_markup=get_track_control_keyboard(),
                     )
                 await search_msg.delete()
             except Exception as e:
@@ -148,3 +149,20 @@ class MenuCallbackHandler(BaseHandler):
                 reply_markup=get_main_menu_keyboard(self.is_admin(update)),
                 parse_mode=ParseMode.MARKDOWN,
             )
+
+class TrackCallbackHandler(BaseHandler):
+    async def handle(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        query = update.callback_query
+        action = query.data
+
+        if action == TrackCallback.DELETE:
+            await query.message.delete()
+            await query.answer("🗑️ Трек удален.")
+        elif action == TrackCallback.LIKE:
+            await query.answer("❤️ Лайк поставлен (в будущих версиях это будет на что-то влиять)!")
+        elif action == TrackCallback.DISLIKE:
+            await query.answer("💔 Дизлайк поставлен (в будущих версиях это будет на что-то влиять)!")
+        elif action == TrackCallback.ADD_TO_PLAYLIST:
+            await query.answer("➕ Трек добавлен в плейлист (пока не реализовано).")
+        else:
+            await query.answer()

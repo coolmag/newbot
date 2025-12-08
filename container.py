@@ -5,8 +5,10 @@ from handlers import (
     AdminCallbackHandler,
     AdminPanelHandler,
     MenuHandler,
+    MenuCallbackHandler,
     PlayHandler,
     StartHandler,
+    TrackCallbackHandler,
 )
 from config import Settings, get_settings
 from cache_service import CacheService
@@ -41,6 +43,8 @@ def create_container(bot: Bot) -> punq.Container:
     container.register(MenuHandler)
     container.register(AdminPanelHandler)
     container.register(AdminCallbackHandler)
+    container.register(MenuCallbackHandler)
+    container.register(TrackCallbackHandler)
 
 
     # --- Downloader Factory ---
