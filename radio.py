@@ -87,9 +87,9 @@ class RadioService:
             self._current_genre = random.choice(self._settings.RADIO_GENRES)
 
         query_templates = [
-            f"{self._current_genre} music",
-            f"best of {self._current_genre}",
-            f"{self._current_genre} top tracks",
+            f"{self._current_genre} official audio",
+            f"{self._current_genre} song",
+            f"Top {self._current_genre} music",
         ]
         search_query = random.choice(query_templates)
         
