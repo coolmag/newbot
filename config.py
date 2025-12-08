@@ -1,7 +1,6 @@
 from pathlib import Path
 from typing import List
 
-from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -14,15 +13,14 @@ class Settings(BaseSettings):
     BOT_TOKEN: str
 
     # --- Необязательные переменные ---
-    ADMIN_IDS: List[int] = []
+    ADMIN_IDS: str = ""
     COOKIES_CONTENT: str = ""
 
-    @field_validator("ADMIN_IDS", mode="before")
-    @classmethod
-    def parse_admin_ids(cls, v: str) -> List[int]:
-        if isinstance(v, str):
-            return [int(i.strip()) for i in v.split(",") if i.strip()]
-        return v
+    @property
+    def ADMIN_ID_LIST(self) -> List[int]:
+        if not self.ADMIN_IDS:
+            return []
+        return [int(i.strip()) for i in self.ADMIN_IDS.split(",") if i.strip()]
 
     # --- Пути ---
     BASE_DIR: Path = Path(__file__).resolve().parent

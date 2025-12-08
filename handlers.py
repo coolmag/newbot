@@ -20,7 +20,7 @@ class BaseHandler:
     def is_admin(self, update: Update) -> bool:
         if not update.effective_user:
             return False
-        return update.effective_user.id in self._settings.ADMIN_IDS
+        return update.effective_user.id in self._settings.ADMIN_ID_LIST
 
     async def handle(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         raise NotImplementedError
