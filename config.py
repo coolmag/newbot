@@ -1,0 +1,59 @@
+from pathlib import Path
+from typing import List
+
+from pydantic import field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env", env_file_encoding="utf-8", extra="ignore"
+    )
+
+    # --- Обязательные переменные ---
+    BOT_TOKEN: str
+
+    # --- Необязательные переменные ---
+    ADMIN_IDS: List[int] = []
+    COOKIES_CONTENT: str = ""
+
+    @field_validator("ADMIN_IDS", mode="before")
+    @classmethod
+    def parse_admin_ids(cls, v: str) -> List[int]:
+        if isinstance(v, str):
+            return [int(i.strip()) for i in v.split(",") if i.strip()]
+        return v
+
+    # --- Пути ---
+    BASE_DIR: Path = Path(__file__).resolve().parent
+    DOWNLOADS_DIR: Path = BASE_DIR / "downloads"
+    CACHE_DB_PATH: Path = BASE_DIR / "cache.db"
+    LOG_FILE_PATH: Path = BASE_DIR / "bot.log"
+    COOKIES_FILE: Path = BASE_DIR / "cookies.txt"
+
+    # --- Настройки логгера ---
+    LOG_LEVEL: str = "INFO"
+
+    # --- Настройки загрузчика ---
+    MAX_QUERY_LENGTH: int = 150
+    MAX_FILE_SIZE_MB: int = 49
+    DOWNLOAD_TIMEOUT_S: int = 120
+
+    # --- Настройки повторных попыток ---
+    MAX_RETRIES: int = 3
+    RETRY_DELAY_S: float = 2.0
+
+    # --- Настройки радио ---
+    RADIO_SOURCE: str = "youtube"
+    RADIO_COOLDOWN_S: int = 10
+    RADIO_MAX_DURATION_S: int = 1200  # 20 минут
+    RADIO_GENRES: List[str] = [
+        "music", "chill", "lofi", "jazz", "rock", "pop", "electronic", "ambient"
+    ]
+
+    # --- Настройки кэша ---
+    CACHE_TTL_DAYS: int = 7
+
+
+def get_settings() -> Settings:
+    return Settings()
