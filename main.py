@@ -15,7 +15,7 @@ from config import get_settings
 from constants import AdminCallback
 from container import create_container
 from log_config import setup_logging
-from cache import CacheService
+from cache_service import CacheService
 from radio import RadioService
 
 logger = logging.getLogger(__name__)

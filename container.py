@@ -9,7 +9,7 @@ from handlers import (
     StartHandler,
 )
 from config import Settings, get_settings
-from cache import CacheService
+from cache_service import CacheService
 from downloaders import (
     BaseDownloader,
     InternetArchiveDownloader,

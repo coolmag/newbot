@@ -10,7 +10,7 @@ import yt_dlp
 
 from config import Settings
 from models import DownloadResult, Source, TrackInfo
-from cache import CacheService
+from cache_service import CacheService
 
 logger = logging.getLogger(__name__)
 
