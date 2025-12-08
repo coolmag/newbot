@@ -82,7 +82,7 @@ class MenuHandler(BaseHandler):
 
 
 class AdminPanelHandler(BaseHandler):
-    def __init__(self(self, settings: Settings, radio_service: RadioService):
+    def __init__(self, settings: Settings, radio_service: RadioService):
         super().__init__(settings)
         self._radio = radio_service
 
