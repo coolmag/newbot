@@ -72,9 +72,9 @@ class YouTubeDownloader(BaseDownloader):
 
     def _get_ydl_options(self, is_search: bool) -> Dict[str, Any]:
         options = {
-            "quiet": True,
-            "no_warnings": True,
-            "ignoreerrors": True,
+            "quiet": False,
+            "no_warnings": False,
+            "ignoreerrors": False,
             "socket_timeout": 30,
             "source_address": "0.0.0.0",
             "user_agent": "Mozilla/5.0",
