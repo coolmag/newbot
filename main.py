@@ -1,7 +1,7 @@
 import asyncio
 import logging
 
-from telegram import BotCommand
+from telegram import BotCommand, BotCommandScopeDefault, BotCommandScopeChat
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters
 
 from handlers import (
@@ -15,7 +15,7 @@ from handlers import (
     ArtistCommandHandler,
     VoteCallbackHandler,
 )
-from config import get_settings
+from config import Settings, get_settings
 from constants import VoteCallback
 from container import create_container
 from log_config import setup_logging
@@ -25,17 +25,34 @@ from cache_service import CacheService
 logger = logging.getLogger(__name__)
 
 
-async def set_bot_commands(app: Application):
-    """Устанавливает список команд, видимых в меню Telegram."""
-    commands = [
+async def set_bot_commands(app: Application, settings: Settings):
+    """Устанавливает разные списки команд для обычных пользователей и админов."""
+    
+    # Команды для обычных пользователей
+    default_commands = [
         BotCommand("start", "🚀 Показать главное меню"),
-        BotCommand("help", "ℹ️ Показать справку (аналог /start)"),
+        BotCommand("help", "ℹ️ Показать справку"),
         BotCommand("play", "🎵 Найти и скачать трек"),
         BotCommand("menu", "🎛️ Показать главное меню"),
-        BotCommand("artist", "🎤 Включить радио по артисту (только для админов)"),
+    ]
+    
+    # Устанавливаем команды по умолчанию для всех
+    await app.bot.set_my_commands(default_commands, scope=BotCommandScopeDefault())
+
+    # Команды для админов (включают команды по умолчанию)
+    admin_commands = default_commands + [
+        BotCommand("artist", "🎤 Включить радио по артисту"),
         BotCommand("admin", "👑 Открыть панель администратора"),
     ]
-    await app.bot.set_my_commands(commands)
+    
+    # Устанавливаем расширенные команды для каждого админа персонально
+    if settings.ADMIN_ID_LIST:
+        for admin_id in settings.ADMIN_ID_LIST:
+            try:
+                await app.bot.set_my_commands(admin_commands, scope=BotCommandScopeChat(chat_id=admin_id))
+                logger.info(f"✅ Установлены админ-команды для пользователя {admin_id}")
+            except Exception as e:
+                logger.error(f"❌ Не удалось установить команды для админа {admin_id}: {e}")
 
 
 async def main() -> None:
@@ -69,7 +86,7 @@ async def main() -> None:
         app.add_handler(CallbackQueryHandler(container.resolve(TrackCallbackHandler).handle, pattern="^track:.*"))
         app.add_handler(CallbackQueryHandler(container.resolve(VoteCallbackHandler).handle, pattern=f"^{VoteCallback.PREFIX}.*"))
 
-        await set_bot_commands(app)
+        await set_bot_commands(app, settings)
         
         # --- Запуск ---
         try:
