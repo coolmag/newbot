@@ -76,6 +76,19 @@ class MenuHandler(BaseHandler):
         )
 
 
+class AdminPanelHandler(BaseHandler):
+    async def handle(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if not self.is_admin(update):
+            await update.message.reply_text("⛔ Только для администраторов.")
+            return
+        
+        await update.message.reply_text(
+            "👑 **Админ-панель**",
+            reply_markup=get_admin_panel_keyboard(self._radio.is_on),
+            parse_mode=ParseMode.MARKDOWN,
+        )
+
+
 class ArtistCommandHandler(BaseHandler):
     async def handle(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not self.is_admin(update):
