@@ -9,7 +9,6 @@ from handlers import (
     PlayHandler,
     StartHandler,
     TrackCallbackHandler,
-    GenreCallbackHandler,
     ArtistCommandHandler,
     VoteCallbackHandler,
 )
@@ -49,7 +48,6 @@ def create_container(bot: Bot) -> punq.Container:
     container.register(AdminCallbackHandler)
     container.register(MenuCallbackHandler)
     container.register(TrackCallbackHandler)
-    container.register(GenreCallbackHandler)
     container.register(VoteCallbackHandler)
 
 
