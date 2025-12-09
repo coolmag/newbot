@@ -43,7 +43,7 @@ class Settings(BaseSettings):
 
     # --- Настройки радио ---
     RADIO_SOURCE: str = "youtube"
-    RADIO_COOLDOWN_S: int = 10
+    RADIO_COOLDOWN_S: int = 120
     RADIO_MAX_DURATION_S: int = 1200  # 20 минут
     RADIO_GENRES: List[str] = [
         "music", "chill", "lofi", "jazz", "rock", "pop", "electronic", "ambient",
