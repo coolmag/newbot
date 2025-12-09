@@ -49,40 +49,46 @@ class Settings(BaseSettings):
     RADIO_MIN_LIKES: Optional[int] = 500
     RADIO_MIN_LIKE_RATIO: Optional[float] = 0.75 # Например, 0.75 для 75% лайков
     RADIO_GENRES: List[str] = [
-        # --- Популярные международные ---
-        "pop", "rock", "indie rock", "alternative rock", "new wave", "post-punk", 
-        "folk", "country", "blues", "jazz", "soul", "funk", "disco", "r&b",
+        # --- Рок ---
+        "rock", "classic rock", "psychedelic rock", "indie rock", "alternative rock", "hard rock", 
+        "post-punk", "metal", "industrial", "gothic rock",
+        
+        # --- Поп и танцевальная ---
+        "pop", "new wave", "disco", "r&b",
+
+        # --- Соул, Фанк, Грув ---
+        "soul", "funk", "soul groove", "jazz-funk", "rare groove", "modern soul",
+        
+        # --- Джаз и Блюз ---
+        "jazz", "blues",
 
         # --- Электроника (общая) ---
         "electronic", "ambient", "chillwave", "lofi hip-hop", "downtempo",
 
-        # --- Танцевальная электроника ---
-        "house", "deep house", "techno", "trance", "drum and bass", "dubstep", "uk garage", 
-        "breakbeat", "hardstyle", "phonk",
+        # --- Танцевальная электроника (House, Techno и др.) ---
+        "house", "deep house", "deep tech house", "progressive house", "tech house", "chill house", "tropical house",
+        "techno", "minimal techno", "trance", "drum and bass", "dubstep", "uk garage", 
+        "breakbeat", "hardstyle", "phonk", "future bass", "ambient house",
 
         # --- Ретро и синт-поп ---
-        "synthwave", "retrowave", "cyberpunk",
+        "synthwave", "retrowave", "cyberpunk", "vaporwave",
 
         # --- Хип-хоп / Рэп ---
         "hip-hop", "rap", 
 
-        # --- Тяжелая музыка ---
-        "metal", "hard rock", "industrial", "gothic rock",
-
-        # --- Классика и инструментальная ---
-        "classical", "orchestral", "soundtrack",
-
-        # --- Регги и этника ---
-        "reggae", "latin", "world music",
+        # --- Классика, фолк и этника ---
+        "classical", "orchestral", "soundtrack", "folk", "country", "reggae", "latin", "world music",
 
         # --- Русскоязычные (поп и рок) ---
-        "русская поп-музыка", "эстрада 80-90х", "современная эстрада", 
-        "русский рок", "русский панк-рок", "русский пост-панк",
+        "русская поп-музыка", "русский рок", "русский панк-рок", "русский пост-панк",
 
         # --- Русскоязычные (хип-хоп) ---
         "русский рэп", "русский хип-хоп", "кальянный рэп",
 
-        # --- Русскоязычные (авторское и шансон) ---
+        # --- Советская эстрада, джаз, грув ---
+        "советский грув", "советский фанк", "советский джаз", "советская эстрада",
+
+        # --- Авторская песня и шансон ---
         "шансон", "бардовская песня", "авторская песня", "русские романсы"
     ]
 

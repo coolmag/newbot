@@ -12,11 +12,12 @@ from handlers import (
     PlayHandler,
     StartHandler,
     TrackCallbackHandler,
+    GenreCallbackHandler,
     ArtistCommandHandler,
     VoteCallbackHandler,
 )
 from config import Settings, get_settings
-from constants import VoteCallback
+from constants import VoteCallback, GenreCallback
 from container import create_container
 from log_config import setup_logging
 from radio import RadioService
@@ -85,6 +86,7 @@ async def main() -> None:
         app.add_handler(CallbackQueryHandler(container.resolve(MenuCallbackHandler).handle, pattern="^menu:.*"))
         app.add_handler(CallbackQueryHandler(container.resolve(TrackCallbackHandler).handle, pattern="^track:.*"))
         app.add_handler(CallbackQueryHandler(container.resolve(VoteCallbackHandler).handle, pattern=f"^{VoteCallback.PREFIX}.*"))
+        app.add_handler(CallbackQueryHandler(container.resolve(GenreCallbackHandler).handle, pattern=f"^{GenreCallback.PREFIX}.*"))
 
         await set_bot_commands(app, settings)
         

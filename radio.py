@@ -3,7 +3,7 @@ import logging
 import random
 import os
 from datetime import datetime, timedelta
-from typing import Optional, Set, Dict
+from typing import Optional, Set, Dict, Tuple
 
 from telegram import Bot, InlineKeyboardMarkup
 from telegram.constants import ParseMode
@@ -40,7 +40,7 @@ class RadioService:
         self._played_ids: Set[str] = set()
 
         # --- Состояние режимов (голосование/артист) ---
-        self.current_mode_message_id: Optional[int] = None
+        self.current_mode_message_info: Optional[Tuple[int, int]] = None # (chat_id, message_id)
         self.artist_mode: Optional[str] = None
         self.winning_genre: str = "rock"  # Начинаем с рока по умолчанию
         self.mode_end_time: Optional[datetime] = None
@@ -91,6 +91,36 @@ class RadioService:
             self._skip_event.set()
 
     # --- Управление режимами ---
+    async def set_admin_genre(self, genre: str, chat_id: int):
+        """Принудительно устанавливает жанр админом."""
+        self.winning_genre = genre
+        self.artist_mode = None
+        self.mode_end_time = datetime.now() + timedelta(hours=1)
+        self._playlist = []
+
+        # Если идет голосование, его нужно прервать
+        if self._vote_in_progress:
+            self._vote_in_progress = False
+            if self.current_mode_message_info:
+                try:
+                    await self._bot.edit_message_text(
+                        chat_id=self.current_mode_message_info[0],
+                        message_id=self.current_mode_message_info[1],
+                        text=f"🗳️ Голосование было отменено.\nАдминистратор установил жанр: **{genre.capitalize()}**",
+                        parse_mode=ParseMode.MARKDOWN,
+                        reply_markup=None
+                    )
+                except TelegramError as e:
+                    logger.warning(f"Не удалось отменить сообщение о голосовании: {e}")
+        
+        await self._bot.send_message(
+            chat_id,
+            f"✅ Жанр принудительно изменен на **{genre.capitalize()}**. Этот жанр будет играть следующий час.",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+
+        logger.info(f"[Режим] Админ установил жанр: {genre} на 1 час.")
+        self.skip()
 
     async def set_artist_mode(self, artist: str, chat_id: int):
         """Включает режим проигрывания одного артиста на час."""
@@ -131,7 +161,7 @@ class RadioService:
                 reply_markup=get_genre_voting_keyboard(),
                 parse_mode=ParseMode.MARKDOWN
             )
-            self.current_mode_message_id = vote_message.message_id
+            self.current_mode_message_info = (vote_message.chat_id, vote_message.message_id)
         except TelegramError as e:
             logger.error(f"Не удалось отправить сообщение о голосовании: {e}")
             self._vote_in_progress = False # Откатываем состояние
@@ -180,10 +210,10 @@ class RadioService:
         logger.info(f"[Режим] По результатам голосования установлен жанр: {self.winning_genre}")
 
         try:
-            if self.current_mode_message_id:
+            if self.current_mode_message_info:
                 await self._bot.edit_message_text(
-                    chat_id=chat_id,
-                    message_id=self.current_mode_message_id,
+                    chat_id=self.current_mode_message_info[0],
+                    message_id=self.current_mode_message_info[1],
                     text=announcement,
                     parse_mode=ParseMode.MARKDOWN,
                     reply_markup=None # Убираем кнопки
@@ -273,10 +303,11 @@ class RadioService:
         while self._is_on and self.error_count < 10:
             try:
                 # Проверяем, не пора ли запустить новое голосование
-                if self.mode_end_time is None or datetime.now() >= self.mode_end_time:
-                    await self.start_genre_vote(chat_id)
-                    # start_genre_vote блокирует выполнение на 5 минут, после чего end_genre_vote
-                    # установит новый mode_end_time, так что цикл продолжится корректно.
+                if not self._vote_in_progress and (self.mode_end_time is None or datetime.now() >= self.mode_end_time):
+                    # Запускаем голосование в фоновой задаче, чтобы не прерывать музыку
+                    asyncio.create_task(self.start_genre_vote(chat_id))
+                    # Сразу устанавливаем следующий "конец режима", чтобы избежать повторного запуска
+                    self.mode_end_time = datetime.now() + timedelta(hours=1)
                 
                 # Если плейлист почти пуст, пополняем его
                 if len(self._playlist) < 5:

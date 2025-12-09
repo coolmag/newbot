@@ -122,9 +122,13 @@ class AdminCallbackHandler(BaseHandler):
             await self._radio.skip()
             await query.answer("⏭️ Пропускаю трек...")
             return
-        
-        # Admin-only genre change is removed, voting is the new way
-        # elif action == AdminCallback.CHANGE_GENRE:
+        elif action == AdminCallback.CHANGE_GENRE:
+            await query.edit_message_text(
+                "🎶 **Выберите жанр для радио:**",
+                reply_markup=get_genre_choice_keyboard(),
+                parse_mode=ParseMode.MARKDOWN,
+            )
+            return # Return to prevent redrawing the admin panel
         
         await query.edit_message_text(
             "👑 **Админ-панель**",
@@ -172,6 +176,27 @@ class MenuCallbackHandler(BaseHandler):
                     await query.answer(f"Следующее голосование начнется через ~{minutes_left} минут.", show_alert=True)
                 else:
                     await query.answer("Радио выключено. Голосование начнется после запуска радио.", show_alert=True)
+
+
+class GenreCallbackHandler(BaseHandler):
+    async def handle(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        query = update.callback_query
+        await query.answer()
+
+        if not self.is_admin(update):
+            await query.answer("⛔ Только для администраторов.", show_alert=True)
+            return
+        
+        genre = query.data.split(GenreCallback.PREFIX)[1]
+        
+        await self._radio.set_admin_genre(genre, update.effective_chat.id)
+        
+        # The message is now sent from within the service, so we just need to go back
+        await query.edit_message_text(
+            "👑 **Админ-панель**",
+            reply_markup=get_admin_panel_keyboard(self._radio.is_on),
+            parse_mode=ParseMode.MARKDOWN,
+        )
 
 
 class VoteCallbackHandler(BaseHandler):
