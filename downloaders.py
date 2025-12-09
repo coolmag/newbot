@@ -72,9 +72,8 @@ class YouTubeDownloader(BaseDownloader):
 
     def _get_ydl_options(self, is_search: bool) -> Dict[str, Any]:
         options = {
-            "quiet": False,
-            "no_warnings": False,
-            "ignoreerrors": False,
+            "quiet": True,
+            "no_warnings": True,
             "socket_timeout": 30,
             "source_address": "0.0.0.0",
             "user_agent": "Mozilla/5.0",
@@ -120,6 +119,7 @@ class YouTubeDownloader(BaseDownloader):
                 
                 duration = int(e.get("duration") or 0)
                 if duration <= 0:
+                    logger.debug(f"[YouTube] Пропущен трек '{e.get('title')}' (ID: {e.get('id')}) из-за нулевой или отрицательной длительности.")
                     continue
 
                 if max_duration and duration > max_duration:
