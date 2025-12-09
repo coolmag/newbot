@@ -34,7 +34,9 @@ async def set_bot_commands(app: Application, settings: Settings):
         BotCommand("start", "🚀 Показать главное меню"),
         BotCommand("help", "ℹ️ Показать справку"),
         BotCommand("play", "🎵 Найти и скачать трек"),
+        BotCommand("p", "🎵 Найти и скачать трек"),
         BotCommand("menu", "🎛️ Показать главное меню"),
+        BotCommand("m", "🎛️ Показать главное меню"),
     ]
     
     # Устанавливаем команды по умолчанию для всех
@@ -43,7 +45,9 @@ async def set_bot_commands(app: Application, settings: Settings):
     # Команды для админов (включают команды по умолчанию)
     admin_commands = default_commands + [
         BotCommand("artist", "🎤 Включить радио по артисту"),
+        BotCommand("art", "🎤 Включить радио по артисту"),
         BotCommand("admin", "👑 Открыть панель администратора"),
+        BotCommand("a", "👑 Открыть панель администратора"),
     ]
     
     # Устанавливаем расширенные команды для каждого админа персонально
@@ -74,13 +78,13 @@ async def main() -> None:
         container = create_container(app.bot)
 
         # --- Регистрация обработчиков ---
-        app.add_handler(CommandHandler(["start", "help", "menu"], container.resolve(StartHandler).handle))
+        app.add_handler(CommandHandler(["start", "help", "menu", "m"], container.resolve(StartHandler).handle))
         
-        app.add_handler(CommandHandler("play", container.resolve(PlayHandler).handle))
+        app.add_handler(CommandHandler(["play", "p"], container.resolve(PlayHandler).handle))
         app.add_handler(MessageHandler(filters.REPLY, container.resolve(PlayHandler).handle))
 
-        app.add_handler(CommandHandler("artist", container.resolve(ArtistCommandHandler).handle))
-        app.add_handler(CommandHandler("admin", container.resolve(AdminPanelHandler).handle))
+        app.add_handler(CommandHandler(["artist", "art"], container.resolve(ArtistCommandHandler).handle))
+        app.add_handler(CommandHandler(["admin", "a"], container.resolve(AdminPanelHandler).handle))
 
         app.add_handler(CallbackQueryHandler(container.resolve(AdminCallbackHandler).handle, pattern="^admin:.*"))
         app.add_handler(CallbackQueryHandler(container.resolve(MenuCallbackHandler).handle, pattern="^menu:.*"))
