@@ -48,11 +48,11 @@ def create_container(bot: Bot) -> punq.Container:
     container.register(AdminPanelHandler)
     container.register(AdminCallbackHandler)
     container.register(MenuCallbackHandler)
-        container.register(TrackCallbackHandler)
-        container.register(GenreCallbackHandler)
-        container.register(VoteCallbackHandler)
-    
-        # --- Downloader Factory ---
+    container.register(TrackCallbackHandler)
+    container.register(GenreCallbackHandler)
+    container.register(VoteCallbackHandler)
+
+    # --- Downloader Factory ---
     def get_downloader() -> BaseDownloader:
         settings = container.resolve(Settings)
         if settings.RADIO_SOURCE.lower() == "internet_archive":
