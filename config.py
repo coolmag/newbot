@@ -46,7 +46,9 @@ class Settings(BaseSettings):
     RADIO_COOLDOWN_S: int = 10
     RADIO_MAX_DURATION_S: int = 1200  # 20 минут
     RADIO_GENRES: List[str] = [
-        "music", "chill", "lofi", "jazz", "rock", "pop", "electronic", "ambient"
+        "music", "chill", "lofi", "jazz", "rock", "pop", "electronic", "ambient",
+        "русский рок", "русский поп", "шансон", "бардовская песня", "эстрада",
+        "фолк", "классика", "рэп", "инди", "метал", "блюз", "кантри"
     ]
 
     # --- Настройки кэша ---
