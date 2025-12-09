@@ -115,15 +115,50 @@ class YouTubeDownloader(BaseDownloader):
             results = []
             for e in entries:
                 if not (e and e.get("id") and e.get("title")):
+                    logger.debug(f"[YouTube] Пропущен трек (без названия или ID): {e}")
                     continue
                 
+                # Фильтрация по длительности
                 duration = int(e.get("duration") or 0)
                 if duration <= 0:
                     logger.debug(f"[YouTube] Пропущен трек '{e.get('title')}' (ID: {e.get('id')}) из-за нулевой или отрицательной длительности.")
                     continue
-
                 if max_duration and duration > max_duration:
+                    logger.debug(f"[YouTube] Пропущен трек '{e.get('title')}' (ID: {e.get('id')}) из-за превышения максимальной длительности ({duration} > {max_duration}).")
                     continue
+
+                # Фильтрация по просмотрам
+                if self._settings.RADIO_MIN_VIEWS is not None:
+                    view_count = e.get("view_count")
+                    if view_count is None or view_count < self._settings.RADIO_MIN_VIEWS:
+                        logger.debug(f"[YouTube] Пропущен трек '{e.get('title')}' (ID: {e.get('id')}) из-за недостаточного количества просмотров ({view_count} < {self._settings.RADIO_MIN_VIEWS}).")
+                        continue
+
+                # Фильтрация по лайкам
+                if self._settings.RADIO_MIN_LIKES is not None:
+                    like_count = e.get("like_count")
+                    if like_count is None or like_count < self._settings.RADIO_MIN_LIKES:
+                        logger.debug(f"[YouTube] Пропущен трек '{e.get('title')}' (ID: {e.get('id')}) из-за недостаточного количества лайков ({like_count} < {self._settings.RADIO_MIN_LIKES}).")
+                        continue
+
+                # Фильтрация по соотношению лайков
+                if self._settings.RADIO_MIN_LIKE_RATIO is not None:
+                    like_count = e.get("like_count")
+                    dislike_count = e.get("dislike_count") # yt-dlp может не всегда предоставлять дизлайки
+
+                    if like_count is not None and dislike_count is not None:
+                        total_reactions = like_count + dislike_count
+                        if total_reactions > 0:
+                            like_ratio = like_count / total_reactions
+                            if like_ratio < self._settings.RADIO_MIN_LIKE_RATIO:
+                                logger.debug(f"[YouTube] Пропущен трек '{e.get('title')}' (ID: {e.get('id')}) из-за низкого соотношения лайков ({like_ratio:.2f} < {self._settings.RADIO_MIN_LIKE_RATIO}).")
+                                continue
+                        else: # Если нет ни лайков, ни дизлайков, считаем, что соотношение не проходит
+                             logger.debug(f"[YouTube] Пропущен трек '{e.get('title')}' (ID: {e.get('id')}) из-за отсутствия реакций для расчета соотношения лайков.")
+                             continue
+                    else: # Если нет информации по лайкам/дизлайкам, пропускаем
+                        logger.debug(f"[YouTube] Пропущен трек '{e.get('title')}' (ID: {e.get('id')}) из-за отсутствия данных для расчета соотношения лайков.")
+                        continue
 
                 results.append(TrackInfo(
                     title=e["title"],
@@ -131,6 +166,8 @@ class YouTubeDownloader(BaseDownloader):
                     duration=duration,
                     source=Source.YOUTUBE.value,
                     identifier=e.get("id"),
+                    view_count=e.get("view_count"),
+                    like_count=e.get("like_count"),
                 ))
             return results
         except Exception as e:

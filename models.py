@@ -21,6 +21,8 @@ class TrackInfo:
     duration: int
     source: str
     identifier: Optional[str] = None
+    view_count: Optional[int] = None
+    like_count: Optional[int] = None
 
     @property
     def display_name(self) -> str:

@@ -29,9 +29,9 @@ class BaseHandler:
 
 class StartHandler(BaseHandler):
     async def handle(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        help_text = "🎵 **Groove AI!**\n\n/play <song> - search & download"
+        help_text = "🎵 **Groove AI!**\n\n/play <название_песни> - найти и скачать трек"
         if self.is_admin(update):
-            help_text += "\n/admin - admin panel"
+            help_text += "\n/admin - панель администратора"
         await update.message.reply_text(
             help_text,
             parse_mode=ParseMode.MARKDOWN,
