@@ -86,7 +86,13 @@ class RadioService:
         self.error_count = 0
         self._playlist = []
         self._played_ids = set()
-        self.mode_end_time = None # Сбрасываем таймер, чтобы голосование началось сразу
+        # Если режим (настроение, жанр, артист) уже установлен, то запускаем радио в этом режиме на час.
+        # Иначе, сбрасываем mode_end_time, чтобы сразу началось голосование.
+        if self.current_mood or self.winning_genre != "rock" or self.artist_mode:
+            self.mode_end_time = datetime.now() + timedelta(hours=1)
+        else:
+            self.mode_end_time = None # Это вызовет голосование на первой итерации _radio_loop
+
         self._task = asyncio.create_task(self._radio_loop(chat_id))
         logger.info(f"✅ Радио-задача создана и запущена для чата {chat_id}.")
 
