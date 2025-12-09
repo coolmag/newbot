@@ -1,3 +1,4 @@
+from typing import List
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 from constants import AdminCallback, MenuCallback, TrackCallback, GenreCallback, VoteCallback
@@ -70,21 +71,13 @@ def get_genre_choice_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(keyboard)
 
 
-def get_genre_voting_keyboard(votes: dict = None) -> InlineKeyboardMarkup:
+def get_genre_voting_keyboard(genres_for_voting: List[str], votes: dict = None) -> InlineKeyboardMarkup:
     """
     Создает клавиатуру для голосования за жанр радио.
-    Показывает количество голосов за каждый жанр.
+    Показывает количество голосов для переданного списка жанров.
     """
     if votes is None:
         votes = {}
-    
-    settings = get_settings()
-    # Для голосования предлагаем не все жанры, а более общую выборку
-    genres_for_voting = [
-        "pop", "rock", "phonk", "electronic", "hip-hop", "indie rock", 
-        "synthwave", "lofi hip-hop", "drum and bass", "house", "techno", "metal",
-        "русский рок", "русский рэп", "русская поп-музыка", "эстрада 80-90х"
-    ]
 
     buttons = []
     for genre in genres_for_voting:

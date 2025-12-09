@@ -216,7 +216,9 @@ class VoteCallbackHandler(BaseHandler):
             # Обновляем клавиатуру с новым количеством голосов
             try:
                 await query.edit_message_reply_markup(
-                    reply_markup=get_genre_voting_keyboard(self._radio._votes)
+                    reply_markup=get_genre_voting_keyboard(
+                        self._radio._current_vote_genres, self._radio._votes
+                    )
                 )
             except Exception as e:
                 logger.warning(f"Не удалось обновить клавиатуру для голосования: {e}")

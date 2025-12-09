@@ -3,7 +3,7 @@ import logging
 import random
 import os
 from datetime import datetime, timedelta
-from typing import Optional, Set, Dict, Tuple
+from typing import Optional, Set, Dict, Tuple, List
 
 from telegram import Bot, InlineKeyboardMarkup
 from telegram.constants import ParseMode
@@ -48,6 +48,7 @@ class RadioService:
         # --- Состояние голосования ---
         self._vote_in_progress: bool = False
         self._votes: Dict[str, Set[int]] = {} # {genre: {user_id_1, user_id_2}}
+        self._current_vote_genres: List[str] = []
 
     @property
     def is_on(self) -> bool:
@@ -120,7 +121,7 @@ class RadioService:
         )
 
         logger.info(f"[Режим] Админ установил жанр: {genre} на 1 час.")
-        self.skip()
+        await self.skip()
 
     async def set_artist_mode(self, artist: str, chat_id: int):
         """Включает режим проигрывания одного артиста на час."""
@@ -153,12 +154,17 @@ class RadioService:
         self._votes = {}
         self.artist_mode = None # Голосование отменяет режим артиста
 
+        # Выбираем 16 случайных жанров для этого голосования
+        all_genres = self._settings.RADIO_GENRES
+        sample_size = min(len(all_genres), 16)
+        self._current_vote_genres = sorted(random.sample(all_genres, sample_size))
+
         try:
             vote_message = await self._bot.send_message(
                 chat_id,
                 "📢 **Началось голосование за жанр!**\n\nВыберите, что будет играть следующий час. "
                 "Голосование продлится 5 минут.",
-                reply_markup=get_genre_voting_keyboard(),
+                reply_markup=get_genre_voting_keyboard(self._current_vote_genres, self._votes),
                 parse_mode=ParseMode.MARKDOWN
             )
             self.current_mode_message_info = (vote_message.chat_id, vote_message.message_id)
@@ -250,7 +256,8 @@ class RadioService:
         
         new_tracks = await self._downloader.search(
             query, 
-            limit=50, 
+            limit=50,
+            min_duration=self._settings.RADIO_MIN_DURATION_S,
             max_duration=self._settings.RADIO_MAX_DURATION_S,
             min_views=self._settings.RADIO_MIN_VIEWS,
             min_likes=self._settings.RADIO_MIN_LIKES,
@@ -259,7 +266,9 @@ class RadioService:
         if not new_tracks and (self._settings.RADIO_MIN_VIEWS or self._settings.RADIO_MIN_LIKES):
             logger.warning(f"[Радио] Поиск '{query}' с фильтрами не дал результатов. Пробую без них.")
             new_tracks = await self._downloader.search(
-                query, limit=50, max_duration=self._settings.RADIO_MAX_DURATION_S
+                query, limit=50, 
+                min_duration=self._settings.RADIO_MIN_DURATION_S,
+                max_duration=self._settings.RADIO_MAX_DURATION_S
             )
 
         if new_tracks:

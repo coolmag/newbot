@@ -33,6 +33,7 @@ class BaseDownloader(ABC):
         self,
         query: str,
         limit: int = 30,
+        min_duration: Optional[int] = None,
         max_duration: Optional[int] = None,
         min_views: Optional[int] = None,
         min_likes: Optional[int] = None,
@@ -115,6 +116,7 @@ class YouTubeDownloader(BaseDownloader):
         self,
         query: str,
         limit: int = 30,
+        min_duration: Optional[int] = None,
         max_duration: Optional[int] = None,
         min_views: Optional[int] = None,
         min_likes: Optional[int] = None,
@@ -139,6 +141,9 @@ class YouTubeDownloader(BaseDownloader):
                 duration = int(e.get("duration") or 0)
                 if duration <= 0:
                     logger.debug(f"[YouTube] Пропущен трек '{e.get('title')}' (ID: {e.get('id')}) из-за нулевой или отрицательной длительности.")
+                    continue
+                if min_duration and duration < min_duration:
+                    logger.debug(f"[YouTube] Пропущен трек '{e.get('title')}' (ID: {e.get('id')}) из-за недостаточной длительности ({duration} < {min_duration}).")
                     continue
                 if max_duration and duration > max_duration:
                     logger.debug(f"[YouTube] Пропущен трек '{e.get('title')}' (ID: {e.get('id')}) из-за превышения максимальной длительности ({duration} > {max_duration}).")
@@ -259,9 +264,9 @@ class InternetArchiveDownloader(BaseDownloader):
         return self._session
 
     async def search(
-        self, query: str, limit: int = 30, max_duration: Optional[int] = None,
-        min_views: Optional[int] = None, min_likes: Optional[int] = None,
-        min_like_ratio: Optional[float] = None
+        self, query: str, limit: int = 30, min_duration: Optional[int] = None, 
+        max_duration: Optional[int] = None, min_views: Optional[int] = None, 
+        min_likes: Optional[int] = None, min_like_ratio: Optional[float] = None
     ) -> List[TrackInfo]:
         params = {
             "q": f'mediatype:audio AND (subject:("{query}") OR title:("{query}"))',
@@ -274,17 +279,25 @@ class InternetArchiveDownloader(BaseDownloader):
             session = await self._get_session()
             async with session.get(self.API_URL, params=params) as response:
                 data = await response.json()
-            return [
-                TrackInfo(
+            
+            results = []
+            for doc in data.get("response", {}).get("docs", []):
+                duration = int(float(doc.get("length", 0)))
+                if duration <= 0:
+                    continue
+                if min_duration and duration < min_duration:
+                    continue
+                if max_duration and duration > max_duration:
+                    continue
+                
+                results.append(TrackInfo(
                     title=doc.get("title", "Unknown"),
                     artist=doc.get("creator", "Unknown"),
-                    duration=int(float(doc.get("length", 0))),
+                    duration=duration,
                     source=Source.INTERNET_ARCHIVE.value,
                     identifier=doc.get("identifier"),
-                )
-                for doc in data.get("response", {}).get("docs", [])
-                if doc.get("length") and int(float(doc.get("length", 0))) > 0
-            ]
+                ))
+            return results
         except Exception:
             return []
 

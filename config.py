@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     RADIO_SOURCE: str = "youtube"
     RADIO_COOLDOWN_S: int = 120
     RADIO_MAX_DURATION_S: int = 1200  # 20 минут
+    RADIO_MIN_DURATION_S: int = 60    # 1 минута
     RADIO_MIN_VIEWS: Optional[int] = 10000
     RADIO_MIN_LIKES: Optional[int] = 500
     RADIO_MIN_LIKE_RATIO: Optional[float] = 0.75 # Например, 0.75 для 75% лайков
