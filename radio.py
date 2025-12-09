@@ -95,13 +95,30 @@ class RadioService:
         
         logger.info(f"[Радио] Ищу треки по запросу: '{search_query}'")
         
-        # Увеличиваем лимит, чтобы получить больше треков
+        # Первая попытка с фильтрами популярности
         new_tracks = await self._downloader.search(
             search_query, 
             limit=50, 
-            max_duration=self._settings.RADIO_MAX_DURATION_S
+            max_duration=self._settings.RADIO_MAX_DURATION_S,
+            min_views=self._settings.RADIO_MIN_VIEWS,
+            min_likes=self._settings.RADIO_MIN_LIKES,
+            min_like_ratio=self._settings.RADIO_MIN_LIKE_RATIO,
         )
         
+        if not new_tracks and (self._settings.RADIO_MIN_VIEWS is not None or 
+                               self._settings.RADIO_MIN_LIKES is not None or 
+                               self._settings.RADIO_MIN_LIKE_RATIO is not None):
+            logger.warning(f"[Радио] Поиск '{search_query}' с фильтрами популярности не дал результатов. Пробую без фильтров.")
+            # Вторая попытка без фильтров популярности (механизм отката)
+            new_tracks = await self._downloader.search(
+                search_query, 
+                limit=50, 
+                max_duration=self._settings.RADIO_MAX_DURATION_S,
+                min_views=None,
+                min_likes=None,
+                min_like_ratio=None,
+            )
+
         if new_tracks:
             # Фильтруем треки, которые уже были в плейлисте
             unique_tracks = [track for track in new_tracks if track.identifier not in self._played_ids]

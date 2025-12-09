@@ -28,7 +28,15 @@ class BaseDownloader(ABC):
         self.semaphore = asyncio.Semaphore(3)
 
     @abstractmethod
-    async def search(self, query: str, limit: int = 30, max_duration: Optional[int] = None) -> List[TrackInfo]:
+    async def search(
+        self,
+        query: str,
+        limit: int = 30,
+        max_duration: Optional[int] = None,
+        min_views: Optional[int] = None,
+        min_likes: Optional[int] = None,
+        min_like_ratio: Optional[float] = None,
+    ) -> List[TrackInfo]:
         raise NotImplementedError
 
     @abstractmethod
@@ -102,7 +110,15 @@ class YouTubeDownloader(BaseDownloader):
             None, lambda: yt_dlp.YoutubeDL(ydl_opts).extract_info(query, download=False)
         )
 
-    async def search(self, query: str, limit: int = 30, max_duration: Optional[int] = None) -> List[TrackInfo]:
+    async def search(
+        self,
+        query: str,
+        limit: int = 30,
+        max_duration: Optional[int] = None,
+        min_views: Optional[int] = None,
+        min_likes: Optional[int] = None,
+        min_like_ratio: Optional[float] = None,
+    ) -> List[TrackInfo]:
         search_query = f"ytsearch{limit}:{query}"
         try:
             info = await self._extract_info(search_query, self._ydl_opts_search)
@@ -128,21 +144,21 @@ class YouTubeDownloader(BaseDownloader):
                     continue
 
                 # Фильтрация по просмотрам
-                if self._settings.RADIO_MIN_VIEWS is not None:
+                if min_views is not None:
                     view_count = e.get("view_count")
-                    if view_count is None or view_count < self._settings.RADIO_MIN_VIEWS:
-                        logger.debug(f"[YouTube] Пропущен трек '{e.get('title')}' (ID: {e.get('id')}) из-за недостаточного количества просмотров ({view_count} < {self._settings.RADIO_MIN_VIEWS}).")
+                    if view_count is None or view_count < min_views:
+                        logger.debug(f"[YouTube] Пропущен трек '{e.get('title')}' (ID: {e.get('id')}) из-за недостаточного количества просмотров ({view_count} < {min_views}).")
                         continue
 
                 # Фильтрация по лайкам
-                if self._settings.RADIO_MIN_LIKES is not None:
+                if min_likes is not None:
                     like_count = e.get("like_count")
-                    if like_count is None or like_count < self._settings.RADIO_MIN_LIKES:
-                        logger.debug(f"[YouTube] Пропущен трек '{e.get('title')}' (ID: {e.get('id')}) из-за недостаточного количества лайков ({like_count} < {self._settings.RADIO_MIN_LIKES}).")
+                    if like_count is None or like_count < min_likes:
+                        logger.debug(f"[YouTube] Пропущен трек '{e.get('title')}' (ID: {e.get('id')}) из-за недостаточного количества лайков ({like_count} < {min_likes}).")
                         continue
 
                 # Фильтрация по соотношению лайков
-                if self._settings.RADIO_MIN_LIKE_RATIO is not None:
+                if min_like_ratio is not None:
                     like_count = e.get("like_count")
                     dislike_count = e.get("dislike_count") # yt-dlp может не всегда предоставлять дизлайки
 
@@ -150,8 +166,8 @@ class YouTubeDownloader(BaseDownloader):
                         total_reactions = like_count + dislike_count
                         if total_reactions > 0:
                             like_ratio = like_count / total_reactions
-                            if like_ratio < self._settings.RADIO_MIN_LIKE_RATIO:
-                                logger.debug(f"[YouTube] Пропущен трек '{e.get('title')}' (ID: {e.get('id')}) из-за низкого соотношения лайков ({like_ratio:.2f} < {self._settings.RADIO_MIN_LIKE_RATIO}).")
+                            if like_ratio < min_like_ratio:
+                                logger.debug(f"[YouTube] Пропущен трек '{e.get('title')}' (ID: {e.get('id')}) из-за низкого соотношения лайков ({like_ratio:.2f} < {min_like_ratio}).")
                                 continue
                         else: # Если нет ни лайков, ни дизлайков, считаем, что соотношение не проходит
                              logger.debug(f"[YouTube] Пропущен трек '{e.get('title')}' (ID: {e.get('id')}) из-за отсутствия реакций для расчета соотношения лайков.")
@@ -170,9 +186,6 @@ class YouTubeDownloader(BaseDownloader):
                     like_count=e.get("like_count"),
                 ))
             return results
-        except Exception as e:
-            logger.error(f"[YouTube] Ошибка поиска для '{query}': {e}", exc_info=True)
-            return []
 
     async def download(self, query_or_id: str) -> DownloadResult:
         # Если это похоже на ID, а не на поисковый запрос, кешируем по ID
@@ -238,7 +251,11 @@ class InternetArchiveDownloader(BaseDownloader):
             self._session = aiohttp.ClientSession()
         return self._session
 
-    async def search(self, query: str, limit: int = 30, max_duration: Optional[int] = None) -> List[TrackInfo]:
+    async def search(
+        self, query: str, limit: int = 30, max_duration: Optional[int] = None,
+        min_views: Optional[int] = None, min_likes: Optional[int] = None,
+        min_like_ratio: Optional[float] = None
+    ) -> List[TrackInfo]:
         params = {
             "q": f'mediatype:audio AND (subject:("{query}") OR title:("{query}"))',
             "fl[]": "identifier,title,creator,length",
