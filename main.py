@@ -4,6 +4,16 @@ import logging
 from telegram import BotCommand, BotCommandScopeDefault, BotCommandScopeChat
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters
 
+from handlers import (
+    AdminCallbackHandler,
+    AdminPanelHandler,
+    MenuHandler,
+    MenuCallbackHandler,
+    PlayHandler,
+    StartHandler,
+    TrackCallbackHandler,
+    GenreCallbackHandler,
+    ArtistCommandHandler,
     VoteCallbackHandler,
     DedicateHandler,
     MoodCallbackHandler,
