@@ -186,6 +186,9 @@ class YouTubeDownloader(BaseDownloader):
                     like_count=e.get("like_count"),
                 ))
             return results
+        except Exception as e:
+            logger.error(f"[YouTube] Ошибка поиска для '{query}': {e}", exc_info=True)
+            return []
 
     async def download(self, query_or_id: str) -> DownloadResult:
         # Если это похоже на ID, а не на поисковый запрос, кешируем по ID
