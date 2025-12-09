@@ -7,6 +7,7 @@ class MenuCallback(str, Enum):
     ADMIN_PANEL = "menu:admin_panel"
     PLAY_TRACK = "menu:play_track"
     VOTE_FOR_GENRE = "menu:vote_genre"
+    CHOOSE_MOOD = "menu:choose_mood"
 
 
 class AdminCallback(str, Enum):
@@ -26,6 +27,11 @@ class GenreCallback:
 class VoteCallback:
     """Префикс для колбэков голосования за жанр."""
     PREFIX = "vote:"
+
+
+class MoodCallback:
+    """Префикс для колбэков выбора настроения."""
+    PREFIX = "mood:"
 
 
 class TrackCallback(str, Enum):

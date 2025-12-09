@@ -1,7 +1,7 @@
 from typing import List
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
-from constants import AdminCallback, MenuCallback, TrackCallback, GenreCallback, VoteCallback
+from constants import AdminCallback, MenuCallback, TrackCallback, GenreCallback, VoteCallback, MoodCallback
 from config import get_settings
 
 
@@ -11,6 +11,7 @@ def get_main_menu_keyboard(is_admin: bool = False) -> InlineKeyboardMarkup:
     """
     keyboard = [
         [InlineKeyboardButton("🎵 Заказать трек", callback_data=MenuCallback.PLAY_TRACK)],
+        [InlineKeyboardButton("😊 Выбрать настроение", callback_data=MenuCallback.CHOOSE_MOOD)],
         [InlineKeyboardButton("🗳️ Голосовать за жанр", callback_data=MenuCallback.VOTE_FOR_GENRE)]
     ]
     if is_admin:
@@ -92,6 +93,26 @@ def get_genre_voting_keyboard(genres_for_voting: List[str], votes: dict = None) 
 
     # Группируем кнопки по 2 в ряд
     keyboard = [buttons[i:i + 2] for i in range(0, len(buttons), 2)]
+    return InlineKeyboardMarkup(keyboard)
+
+
+def get_mood_choice_keyboard() -> InlineKeyboardMarkup:
+    """
+    Создает клавиатуру для выбора настроения радио.
+    """
+    settings = get_settings()
+    mood_names = list(settings.RADIO_MOODS.keys())
+    
+    buttons = [
+        InlineKeyboardButton(
+            text=mood.capitalize(), 
+            callback_data=f"{MoodCallback.PREFIX}{mood}"
+        ) 
+        for mood in mood_names
+    ]
+    # Группируем кнопки по 2 в ряд для компактности
+    keyboard = [buttons[i:i + 2] for i in range(0, len(buttons), 2)]
+    keyboard.append([InlineKeyboardButton("↩️ Назад в меню", callback_data=MenuCallback.REFRESH)])
     return InlineKeyboardMarkup(keyboard)
 
 

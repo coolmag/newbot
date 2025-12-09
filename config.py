@@ -89,9 +89,20 @@ class Settings(BaseSettings):
         # --- Советская эстрада, джаз, грув ---
         "советский грув", "советский фанк", "советский джаз", "советская эстрада",
 
-        # --- Авторская песня и шансон ---
+        # --- Русскоязычные (авторское и шансон) ---
         "шансон", "бардовская песня", "авторская песня", "русские романсы"
     ]
+
+    RADIO_MOODS: Dict[str, List[str]] = {
+        "энергичное": ["pop", "house", "hardstyle", "drum and bass", "hip-hop", "rock", "эстрада 80-90х"],
+        "спокойное": ["ambient", "lofi hip-hop", "chillwave", "jazz", "classical", "downtempo"],
+        "веселое": ["disco", "funk", "pop", "tropical house", "latin", "эстрада"],
+        "грустное": ["blues", "indie rock", "alternative rock", "русские романсы"],
+        "фокус": ["ambient", "lofi hip-hop", "minimal techno"],
+        "драйв": ["hard rock", "metal", "phonk", "techno", "trance"],
+        "ностальгия": ["synthwave", "retrowave", "classic rock", "советская эстрада", "эстрада 80-90х"],
+        "русское": ["русская поп-музыка", "русский рок", "русский рэп", "шансон", "бардовская песня", "советская эстрада"]
+    }
 
     # --- Настройки кэша ---
     CACHE_TTL_DAYS: int = 7

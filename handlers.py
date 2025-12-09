@@ -8,9 +8,10 @@ from telegram.ext import ContextTypes
 from config import Settings
 from keyboards import (
     get_main_menu_keyboard, get_admin_panel_keyboard, get_track_control_keyboard,
-    get_genre_choice_keyboard, get_genre_voting_keyboard, get_voting_in_progress_keyboard
+    get_genre_choice_keyboard, get_genre_voting_keyboard, get_voting_in_progress_keyboard,
+    get_mood_choice_keyboard
 )
-from constants import AdminCallback, MenuCallback, TrackCallback, GenreCallback, VoteCallback
+from constants import AdminCallback, MenuCallback, TrackCallback, GenreCallback, VoteCallback, MoodCallback
 from downloaders import YouTubeDownloader
 from radio import RadioService
 
@@ -62,6 +63,54 @@ class PlayHandler(BaseHandler):
                     )
                 await search_msg.delete()
             except Exception:
+                await search_msg.edit_text("❌ Ошибка при отправке файла.")
+        else:
+            await search_msg.edit_text(f"❌ Не удалось найти `{query}`. {result.error}")
+
+
+class DedicateHandler(BaseHandler):
+    async def handle(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        sender = update.effective_user
+        if not context.args or len(context.args) < 2:
+            await update.message.reply_text(
+                "⚠️ Неправильный формат. Используйте: `/d @username <название песни>`",
+                parse_mode=ParseMode.MARKDOWN
+            )
+            return
+
+        recipient = context.args[0]
+        if not recipient.startswith('@'):
+            await update.message.reply_text(
+                "⚠️ Неправильный формат. Первым должно идти имя пользователя, начиная с @.",
+                parse_mode=ParseMode.MARKDOWN
+            )
+            return
+            
+        query = " ".join(context.args[1:])
+        
+        search_msg = await update.message.reply_text(f"🔍 Ищу '{query}' для {recipient}...", parse_mode=ParseMode.MARKDOWN)
+        result = await self._downloader.download_with_retry(query)
+
+        if result.success:
+            try:
+                with open(result.file_path, "rb") as audio:
+                    caption = (
+                        f"🎧 Этот трек для {recipient} от {sender.mention_markdown()}!\n\n"
+                        f"✅ `{result.track_info.display_name}`"
+                    )
+                    await context.bot.send_audio(
+                        chat_id=update.effective_chat.id,
+                        audio=audio,
+                        title=result.track_info.title,
+                        performer=result.track_info.artist,
+                        duration=result.track_info.duration,
+                        caption=caption,
+                        parse_mode=ParseMode.MARKDOWN,
+                        reply_markup=get_track_control_keyboard(),
+                    )
+                await search_msg.delete()
+            except Exception as e:
+                logger.error(f"Ошибка при отправке трека-посвящения: {e}")
                 await search_msg.edit_text("❌ Ошибка при отправке файла.")
         else:
             await search_msg.edit_text(f"❌ Не удалось найти `{query}`. {result.error}")
@@ -164,6 +213,12 @@ class MenuCallbackHandler(BaseHandler):
                 reply_markup=ForceReply(selective=True, input_field_placeholder="Название трека...")
             )
             await query.message.delete()
+        elif action == MenuCallback.CHOOSE_MOOD:
+            await query.edit_message_text(
+                "😊 **Выберите настроение для радио:**",
+                reply_markup=get_mood_choice_keyboard(),
+                parse_mode=ParseMode.MARKDOWN,
+            )
         elif action == MenuCallback.VOTE_FOR_GENRE:
             if self._radio.is_vote_in_progress:
                 await query.answer("Голосование уже идет!", show_alert=True)
@@ -199,6 +254,22 @@ class GenreCallbackHandler(BaseHandler):
         )
 
 
+class MoodCallbackHandler(BaseHandler):
+    async def handle(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        query = update.callback_query
+        await query.answer()
+
+        mood = query.data.split(MoodCallback.PREFIX)[1]
+        await self._radio.set_mood(mood, update.effective_chat.id)
+
+        # Go back to main menu
+        await query.edit_message_text(
+            "🎛️ **Главное меню**",
+            reply_markup=get_main_menu_keyboard(self.is_admin(update)),
+            parse_mode=ParseMode.MARKDOWN,
+        )
+
+
 class VoteCallbackHandler(BaseHandler):
     async def handle(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         query = update.callback_query
@@ -211,17 +282,9 @@ class VoteCallbackHandler(BaseHandler):
         genre = query.data.split(VoteCallback.PREFIX)[1]
         user_id = query.from_user.id
         
-        if await self._radio.register_vote(genre, user_id):
+        if self._radio.register_vote(genre, user_id):
             await query.answer(f"✅ Ваш голос за '{genre.capitalize()}' принят!")
-            # Обновляем клавиатуру с новым количеством голосов
-            try:
-                await query.edit_message_reply_markup(
-                    reply_markup=get_genre_voting_keyboard(
-                        self._radio._current_vote_genres, self._radio._votes
-                    )
-                )
-            except Exception as e:
-                logger.warning(f"Не удалось обновить клавиатуру для голосования: {e}")
+            await self._radio.update_vote_keyboard()
         else:
             await query.answer("Что-то пошло не так.", show_alert=True)
 

@@ -4,20 +4,12 @@ import logging
 from telegram import BotCommand, BotCommandScopeDefault, BotCommandScopeChat
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters
 
-from handlers import (
-    AdminCallbackHandler,
-    AdminPanelHandler,
-    MenuHandler,
-    MenuCallbackHandler,
-    PlayHandler,
-    StartHandler,
-    TrackCallbackHandler,
-    GenreCallbackHandler,
-    ArtistCommandHandler,
     VoteCallbackHandler,
+    DedicateHandler,
+    MoodCallbackHandler,
 )
 from config import Settings, get_settings
-from constants import VoteCallback, GenreCallback
+from constants import VoteCallback, GenreCallback, MoodCallback
 from container import create_container
 from log_config import setup_logging
 from radio import RadioService
@@ -37,6 +29,8 @@ async def set_bot_commands(app: Application, settings: Settings):
         BotCommand("p", "🎵 Найти и скачать трек"),
         BotCommand("menu", "🎛️ Показать главное меню"),
         BotCommand("m", "🎛️ Показать главное меню"),
+        BotCommand("dedicate", "🎧 Посвятить трек пользователю"),
+        BotCommand("d", "🎧 Посвятить трек пользователю"),
     ]
     
     # Устанавливаем команды по умолчанию для всех
@@ -83,6 +77,7 @@ async def main() -> None:
         app.add_handler(CommandHandler(["play", "p"], container.resolve(PlayHandler).handle))
         app.add_handler(MessageHandler(filters.REPLY, container.resolve(PlayHandler).handle))
 
+        app.add_handler(CommandHandler(["dedicate", "d"], container.resolve(DedicateHandler).handle))
         app.add_handler(CommandHandler(["artist", "art"], container.resolve(ArtistCommandHandler).handle))
         app.add_handler(CommandHandler(["admin", "a"], container.resolve(AdminPanelHandler).handle))
 
@@ -91,6 +86,7 @@ async def main() -> None:
         app.add_handler(CallbackQueryHandler(container.resolve(TrackCallbackHandler).handle, pattern="^track:.*"))
         app.add_handler(CallbackQueryHandler(container.resolve(VoteCallbackHandler).handle, pattern=f"^{VoteCallback.PREFIX}.*"))
         app.add_handler(CallbackQueryHandler(container.resolve(GenreCallbackHandler).handle, pattern=f"^{GenreCallback.PREFIX}.*"))
+        app.add_handler(CallbackQueryHandler(container.resolve(MoodCallbackHandler).handle, pattern=f"^{MoodCallback.PREFIX}.*"))
 
         await set_bot_commands(app, settings)
         

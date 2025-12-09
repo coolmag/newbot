@@ -12,6 +12,8 @@ from handlers import (
     GenreCallbackHandler,
     ArtistCommandHandler,
     VoteCallbackHandler,
+    DedicateHandler,
+    MoodCallbackHandler,
 )
 from config import Settings, get_settings
 from cache_service import CacheService
@@ -43,6 +45,7 @@ def create_container(bot: Bot) -> punq.Container:
     # --- Handlers ---
     container.register(StartHandler)
     container.register(PlayHandler)
+    container.register(DedicateHandler)
     container.register(MenuHandler)
     container.register(ArtistCommandHandler)
     container.register(AdminPanelHandler)
@@ -51,6 +54,7 @@ def create_container(bot: Bot) -> punq.Container:
     container.register(TrackCallbackHandler)
     container.register(GenreCallbackHandler)
     container.register(VoteCallbackHandler)
+    container.register(MoodCallbackHandler)
 
     # --- Downloader Factory ---
     def get_downloader() -> BaseDownloader:
