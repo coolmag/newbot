@@ -412,7 +412,8 @@ class RadioService:
                     elif self.current_mood:
                         mode_text = f"😊 Настроение: {self.current_mood.capitalize()}"
                     else:
-                        mode_text = f"🎶 Жанр: {self.winning_genre.capitalize()}"
+                        genre_text = self.winning_genre or "rock"
+                        mode_text = f"🎶 Жанр: {genre_text.capitalize()}"
 
                     status_text = (
                         f"📻 **Сейчас в эфире | {mode_text}**\n\n"
