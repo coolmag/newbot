@@ -49,9 +49,41 @@ class Settings(BaseSettings):
     RADIO_MIN_LIKES: Optional[int] = 500
     RADIO_MIN_LIKE_RATIO: Optional[float] = 0.75 # Например, 0.75 для 75% лайков
     RADIO_GENRES: List[str] = [
-        "music", "chill", "lofi", "jazz", "rock", "pop", "electronic", "ambient",
-        "русский рок", "русский поп", "шансон", "бардовская песня", "эстрада",
-        "фолк", "классика", "рэп", "инди", "метал", "блюз", "кантри"
+        # --- Популярные международные ---
+        "pop", "rock", "indie rock", "alternative rock", "new wave", "post-punk", 
+        "folk", "country", "blues", "jazz", "soul", "funk", "disco", "r&b",
+
+        # --- Электроника (общая) ---
+        "electronic", "ambient", "chillwave", "lofi hip-hop", "downtempo",
+
+        # --- Танцевальная электроника ---
+        "house", "deep house", "techno", "trance", "drum and bass", "dubstep", "uk garage", 
+        "breakbeat", "hardstyle", "phonk",
+
+        # --- Ретро и синт-поп ---
+        "synthwave", "retrowave", "cyberpunk",
+
+        # --- Хип-хоп / Рэп ---
+        "hip-hop", "rap", 
+
+        # --- Тяжелая музыка ---
+        "metal", "hard rock", "industrial", "gothic rock",
+
+        # --- Классика и инструментальная ---
+        "classical", "orchestral", "soundtrack",
+
+        # --- Регги и этника ---
+        "reggae", "latin", "world music",
+
+        # --- Русскоязычные (поп и рок) ---
+        "русская поп-музыка", "эстрада 80-90х", "современная эстрада", 
+        "русский рок", "русский панк-рок", "русский пост-панк",
+
+        # --- Русскоязычные (хип-хоп) ---
+        "русский рэп", "русский хип-хоп", "кальянный рэп",
+
+        # --- Русскоязычные (авторское и шансон) ---
+        "шансон", "бардовская песня", "авторская песня", "русские романсы"
     ]
 
     # --- Настройки кэша ---

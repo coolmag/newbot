@@ -2,6 +2,7 @@ import asyncio
 import glob
 import logging
 import random
+import re
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 
@@ -193,7 +194,10 @@ class YouTubeDownloader(BaseDownloader):
     async def download(self, query_or_id: str) -> DownloadResult:
         # Если это похоже на ID, а не на поисковый запрос, кешируем по ID
         # Это важно для радио, чтобы не кешировать один и тот же трек под разными поисковыми запросами
-        is_id = " " not in query_or_id and len(query_or_id) < 20 
+        # Используем регулярное выражение для точного определения стандартного YouTube ID (11 символов).
+        # Это решает проблему, когда поисковый запрос из одного слова (например, "phonk" или "кровосток")
+        # ошибочно считался идентификатором.
+        is_id = re.match(r"^[a-zA-Z0-9_-]{11}$", query_or_id) is not None
         cache_key = query_or_id if is_id else f"search:{query_or_id}"
         
         cached = await self._cache.get(cache_key, Source.YOUTUBE)

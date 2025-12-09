@@ -1,17 +1,20 @@
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
-from constants import AdminCallback, MenuCallback, TrackCallback, GenreCallback
+from constants import AdminCallback, MenuCallback, TrackCallback, GenreCallback, VoteCallback
 from config import get_settings
 
 
 def get_main_menu_keyboard(is_admin: bool = False) -> InlineKeyboardMarkup:
     """
-    Возвращает основное меню бота.
+    Возвращает главное меню бота с основными действиями.
     """
-    keyboard = [[InlineKeyboardButton("🔄 Обновить", callback_data=MenuCallback.REFRESH)]]
+    keyboard = [
+        [InlineKeyboardButton("🎵 Заказать трек", callback_data=MenuCallback.PLAY_TRACK)],
+        [InlineKeyboardButton("🗳️ Голосовать за жанр", callback_data=MenuCallback.VOTE_FOR_GENRE)]
+    ]
     if is_admin:
-        keyboard.insert(
-            0, [InlineKeyboardButton("👑 Админ-панель", callback_data=MenuCallback.ADMIN_PANEL)]
+        keyboard.append(
+            [InlineKeyboardButton("👑 Админ-панель", callback_data=MenuCallback.ADMIN_PANEL)]
         )
     return InlineKeyboardMarkup(keyboard)
 
@@ -28,7 +31,8 @@ def get_admin_panel_keyboard(is_radio_on: bool) -> InlineKeyboardMarkup:
     keyboard = [
         [radio_button, InlineKeyboardButton("🎶 Сменить жанр", callback_data=AdminCallback.CHANGE_GENRE)],
         [InlineKeyboardButton("⏭️ Следующий трек", callback_data=AdminCallback.RADIO_SKIP)],
-        [InlineKeyboardButton("↩️ Назад в меню", callback_data=AdminCallback.MAIN_MENU)],
+        # Исправлено: кнопка "назад" теперь использует MenuCallback.REFRESH для возврата в главное меню
+        [InlineKeyboardButton("↩️ Назад в меню", callback_data=MenuCallback.REFRESH)],
     ]
     return InlineKeyboardMarkup(keyboard)
 
@@ -50,7 +54,7 @@ def get_track_control_keyboard() -> InlineKeyboardMarkup:
 
 def get_genre_choice_keyboard() -> InlineKeyboardMarkup:
     """
-    Создает клавиатуру для выбора жанра радио.
+    Создает клавиатуру для выбора жанра радио (для админа).
     """
     settings = get_settings()
     buttons = [
@@ -63,6 +67,49 @@ def get_genre_choice_keyboard() -> InlineKeyboardMarkup:
     # Группируем кнопки по 3 в ряд
     keyboard = [buttons[i:i + 3] for i in range(0, len(buttons), 3)]
     keyboard.append([InlineKeyboardButton("↩️ Назад в админ-панель", callback_data=MenuCallback.ADMIN_PANEL)])
+    return InlineKeyboardMarkup(keyboard)
+
+
+def get_genre_voting_keyboard(votes: dict = None) -> InlineKeyboardMarkup:
+    """
+    Создает клавиатуру для голосования за жанр радио.
+    Показывает количество голосов за каждый жанр.
+    """
+    if votes is None:
+        votes = {}
+    
+    settings = get_settings()
+    # Для голосования предлагаем не все жанры, а более общую выборку
+    genres_for_voting = [
+        "pop", "rock", "phonk", "electronic", "hip-hop", "indie rock", 
+        "synthwave", "lofi hip-hop", "drum and bass", "house", "techno", "metal",
+        "русский рок", "русский рэп", "русская поп-музыка", "эстрада 80-90х"
+    ]
+
+    buttons = []
+    for genre in genres_for_voting:
+        vote_count = len(votes.get(genre, []))
+        text = f"{genre.capitalize()}"
+        if vote_count > 0:
+            text += f" [{vote_count}]"
+        
+        buttons.append(
+            InlineKeyboardButton(text=text, callback_data=f"{VoteCallback.PREFIX}{genre}")
+        )
+
+    # Группируем кнопки по 2 в ряд
+    keyboard = [buttons[i:i + 2] for i in range(0, len(buttons), 2)]
+    return InlineKeyboardMarkup(keyboard)
+
+
+def get_voting_in_progress_keyboard() -> InlineKeyboardMarkup:
+    """
+    Клавиатура, отображаемая, когда пользователь пытается начать голосование, а оно уже идет.
+    """
+    keyboard = [
+        # В будущем можно добавить кнопку для обновления сообщения с голосованием
+        [InlineKeyboardButton("↩️ Назад в меню", callback_data=MenuCallback.REFRESH)],
+    ]
     return InlineKeyboardMarkup(keyboard)
 
 
