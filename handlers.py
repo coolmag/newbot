@@ -166,6 +166,21 @@ class AdminPanelHandler(BaseHandler):
         )
 
 
+class ArtistCommandHandler(BaseHandler):
+    async def handle(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if not self.is_admin(update):
+            await update.message.reply_text("⛔ Только для администраторов.")
+            return
+        
+        artist = " ".join(context.args)
+        if not artist:
+            await update.message.reply_text("⚠️ Укажите имя артиста. `/artist <имя>`")
+            return
+        
+        await self._radio.set_artist_mode(artist, update.effective_chat.id)
+        await update.message.reply_text(f"✅ Включаю режим артиста: **{artist}**", parse_mode=ParseMode.MARKDOWN)
+
+
 class AdminCallbackHandler(BaseHandler):
     async def handle(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         query = update.callback_query
