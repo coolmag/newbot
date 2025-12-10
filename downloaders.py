@@ -166,8 +166,22 @@ class YouTubeDownloader(BaseDownloader):
         try:
             info = await self._extract_info(f"ytsearch5:{smart_query}", ydl_opts_strict)
             if info and info.get("entries"):
+                # Ищем первое видео с категорией "Музыка"
+                for entry in info["entries"]:
+                    categories = entry.get("categories", [])
+                    if isinstance(categories, list) and "Music" in categories:
+                        logger.info(f"[SmartSearch] Успех (строгий поиск)! Найден музыкальный трек: {entry['title']}")
+                        return TrackInfo(
+                            title=entry["title"],
+                            artist=entry.get("channel", entry.get("uploader", "Unknown")),
+                            duration=int(entry.get("duration", 0)),
+                            source=Source.YOUTUBE.value,
+                            identifier=entry["id"],
+                        )
+                
+                # Если музыкальных треков не найдено, берем первый результат, как раньше
                 best_entry = info["entries"][0]
-                logger.info(f"[SmartSearch] Успех (строгий поиск)! Найден трек: {best_entry['title']}")
+                logger.info(f"[SmartSearch] Музыкальных треков не найдено, беру первый результат: {best_entry['title']}")
                 return TrackInfo(
                     title=best_entry["title"],
                     artist=best_entry.get("channel", best_entry.get("uploader", "Unknown")),
@@ -188,8 +202,22 @@ class YouTubeDownloader(BaseDownloader):
         try:
             info = await self._extract_info(f"ytsearch1:{query}", ydl_opts_fallback)
             if info and info.get("entries"):
+                # Ищем первое видео с категорией "Музыка"
+                for entry in info["entries"]:
+                    categories = entry.get("categories", [])
+                    if isinstance(categories, list) and "Music" in categories:
+                        logger.info(f"[SmartSearch] Успех (обычный поиск)! Найден музыкальный трек: {entry['title']}")
+                        return TrackInfo(
+                            title=entry["title"],
+                            artist=entry.get("channel", entry.get("uploader", "Unknown")),
+                            duration=int(entry.get("duration", 0)),
+                            source=Source.YOUTUBE.value,
+                            identifier=entry["id"],
+                        )
+
+                # Если музыкальных треков не найдено, берем первый результат, как раньше
                 best_entry = info["entries"][0]
-                logger.info(f"[SmartSearch] Успех (обычный поиск)! Найден трек: {best_entry['title']}")
+                logger.info(f"[SmartSearch] Музыкальных треков не найдено (обычный поиск), беру первый результат: {best_entry['title']}")
                 return TrackInfo(
                     title=best_entry["title"],
                     artist=best_entry.get("channel", best_entry.get("uploader", "Unknown")),
@@ -291,8 +319,19 @@ class YouTubeDownloader(BaseDownloader):
             
             entries = info.get("entries", []) or []
             
+            # Сначала отфильтровываем по категории "Music"
+            music_entries = [
+                e for e in entries 
+                if e and isinstance(e.get("categories"), list) and "Music" in e.get("categories", [])
+            ]
+            
+            # Если после фильтрации ничего не осталось, используем оригинальный список
+            if not music_entries:
+                logger.warning(f"[YouTube Search] Не найдено треков с категорией 'Music' для запроса '{query}'. Использую все результаты.")
+                music_entries = entries
+
             results = []
-            for e in entries:
+            for e in music_entries:
                 if not (e and e.get("id") and e.get("title")):
                     logger.debug(f"[YouTube Search Debug] Пропущен трек (без названия или ID): {e}")
                     continue
