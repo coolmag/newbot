@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import signal
 
 from telegram import BotCommand, BotCommandScopeDefault, BotCommandScopeChat
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters
@@ -67,10 +68,20 @@ async def set_bot_commands(app: Application, settings: Settings):
                 logger.error(f"❌ Не удалось установить команды для админа {admin_id}: {e}")
 
 
-async def start_bot() -> None:
-    """Асинхронная функция для настройки и запуска бота."""
+async def main() -> None:
+    """Основная функция запуска бота."""
     settings = get_settings()
-    
+    setup_logging(settings)
+
+    if settings.COOKIES_CONTENT:
+        try:
+            settings.COOKIES_FILE.write_text(settings.COOKIES_CONTENT)
+            logger.info("✅ Файл cookies.txt успешно создан из переменной окружения.")
+        except Exception as e:
+            logger.error(f"❌ Не удалось создать cookies.txt: {e}")
+
+    logger.info("🚀 Запуск Music Bot v4.1...")
+
     app = Application.builder().token(settings.BOT_TOKEN).build()
     container = create_container(app.bot)
 
@@ -92,46 +103,45 @@ async def start_bot() -> None:
     app.add_handler(CallbackQueryHandler(container.resolve(GenreCallbackHandler).handle, pattern=f"^{GenreCallback.PREFIX}.*"))
     app.add_handler(CallbackQueryHandler(container.resolve(MoodCallbackHandler).handle, pattern=f"^{MoodCallback.PREFIX}.*"))
 
-    await set_bot_commands(app, settings)
-    
-    cache_service = container.resolve(CacheService)
-    await cache_service.initialize()
-    
-    logger.info("✅ Бот запущен и готов к работе.")
-    
+    # --- Запуск и остановка ---
     try:
-        await app.run_polling(drop_pending_updates=True)
+        await app.initialize()
+        await set_bot_commands(app, settings)
+        
+        cache_service = container.resolve(CacheService)
+        await cache_service.initialize()
+
+        await app.updater.start_polling(drop_pending_updates=True)
+        logger.info("✅ Бот запущен и готов к работе.")
+
+        # --- Корректная обработка остановки ---
+        stop_signals = (signal.SIGINT, signal.SIGTERM, signal.SIGABRT)
+        loop = asyncio.get_running_loop()
+        stop_event = asyncio.Event()
+
+        for sig in stop_signals:
+            loop.add_signal_handler(sig, stop_event.set)
+        
+        await stop_event.wait()
+
     finally:
         logger.info("🛑 Останавливаю сервисы...")
+        if app.updater and app.updater.running:
+            await app.updater.stop()
+
         radio_service = container.resolve(RadioService)
         if radio_service.is_on:
             await radio_service.stop()
         
+        cache_service = container.resolve(CacheService)
         await cache_service.close()
+        
+        await app.shutdown()
         logger.info("👋 Бот остановлен.")
 
 
-def main() -> None:
-    """Основная синхронная функция для запуска бота."""
-    settings = get_settings()
-    setup_logging(settings)
-
-    if settings.COOKIES_CONTENT:
-        try:
-            settings.COOKIES_FILE.write_text(settings.COOKIES_CONTENT)
-            logger.info("✅ Файл cookies.txt успешно создан из переменной окружения.")
-        except Exception as e:
-            logger.error(f"❌ Не удалось создать cookies.txt: {e}")
-
-    logger.info("🚀 Запуск Music Bot v4.1...")
-    
-    try:
-        asyncio.run(start_bot())
-    except (KeyboardInterrupt, SystemExit):
-        logger.info("👋 Получен сигнал остановки...")
-    except Exception as e:
-        logger.critical(f"❌ Критическая ошибка при запуске бота: {e}", exc_info=True)
-
-
 if __name__ == "__main__":
-    main()
+    try:
+        asyncio.run(main())
+    except (KeyboardInterrupt, SystemExit):
+        logger.info("👋 Программа завершена.")
