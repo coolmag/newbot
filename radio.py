@@ -41,7 +41,6 @@ class RadioService:
         self._played_ids: Set[str] = set()
 
         # --- Состояние режимов (голосование/артист) ---
-        self.current_mode_message_info: Optional[Tuple[int, int]] = None # (chat_id, message_id)
         self.artist_mode: Optional[str] = None
         self.winning_genre: str = "rock"  # Начинаем с рока по умолчанию
         self.current_mood: Optional[str] = None # Новое поле для текущего настроения
@@ -51,6 +50,9 @@ class RadioService:
         self._vote_in_progress: bool = False
         self._votes: Dict[str, Set[int]] = {} # {genre: {user_id_1, user_id_2}}
         self._current_vote_genres: List[str] = []
+        # ID сообщения, в котором идет голосование (отдельно от статуса)
+        self.current_vote_message_info: Optional[Tuple[int, int]] = None 
+        self._vote_task: Optional[asyncio.Task] = None
 
     @property
     def is_on(self) -> bool:
@@ -78,7 +80,6 @@ class RadioService:
             self._status_message_info = (chat_id, status_message.message_id)
         except TelegramError as e:
             logger.error(f"Не удалось отправить или закрепить статус-сообщение: {e}")
-            # Не запускаем радио, если не можем создать статус
             return
 
         self._is_on = True
@@ -86,12 +87,11 @@ class RadioService:
         self.error_count = 0
         self._playlist = []
         self._played_ids = set()
-        # Если режим (настроение, жанр, артист) уже установлен, то запускаем радио в этом режиме на час.
-        # Иначе, сбрасываем mode_end_time, чтобы сразу началось голосование.
+
         if self.current_mood or self.winning_genre != "rock" or self.artist_mode:
             self.mode_end_time = datetime.now() + timedelta(hours=1)
         else:
-            self.mode_end_time = None # Это вызовет голосование на первой итерации _radio_loop
+            self.mode_end_time = None
 
         self._task = asyncio.create_task(self._radio_loop(chat_id))
         logger.info(f"✅ Радио-задача создана и запущена для чата {chat_id}.")
@@ -107,7 +107,17 @@ class RadioService:
                 pass
             self._task = None
         
-        # Открепляем и обновляем статус
+        if self._vote_task:
+            self._vote_task.cancel()
+            self._vote_task = None
+        
+        if self.current_vote_message_info:
+            try:
+                await self._bot.delete_message(self.current_vote_message_info[0], self.current_vote_message_info[1])
+            except TelegramError:
+                pass
+            self.current_vote_message_info = None
+
         if self._status_message_info:
             chat_id, message_id = self._status_message_info
             try:
@@ -129,24 +139,29 @@ class RadioService:
         """Принудительно устанавливает жанр админом."""
         self.winning_genre = genre
         self.artist_mode = None
-        self.current_mood = None # Сбрасываем настроение
+        self.current_mood = None
         self.mode_end_time = datetime.now() + timedelta(hours=1)
         self._playlist = []
 
-        # Если идет голосование, его нужно прервать
-        if self._vote_in_progress:
-            self._vote_in_progress = False
-            if self.current_mode_message_info:
-                try:
-                    await self._bot.edit_message_text(
-                        chat_id=self.current_mode_message_info[0],
-                        message_id=self.current_mode_message_info[1],
-                        text=f"🗳️ Голосование было отменено.\nАдминистратор установил жанр: **{genre.capitalize()}**",
-                        parse_mode=ParseMode.MARKDOWN,
-                        reply_markup=None
-                    )
-                except TelegramError as e:
-                    logger.warning(f"Не удалось отменить сообщение о голосовании: {e}")
+        if self._vote_task:
+            self._vote_task.cancel()
+            self._vote_task = None
+
+        if self.current_vote_message_info:
+            try:
+                chat_id_vote, msg_id_vote = self.current_vote_message_info
+                await self._bot.edit_message_text(
+                    chat_id=chat_id_vote,
+                    message_id=msg_id_vote,
+                    text=f"🗳️ Голосование отменено.\nАдмин установил жанр: **{genre.capitalize()}**",
+                    parse_mode=ParseMode.MARKDOWN,
+                    reply_markup=None
+                )
+            except TelegramError as e:
+                logger.warning(f"Не удалось изменить сообщение о голосовании: {e}")
+            self.current_vote_message_info = None
+
+        self._vote_in_progress = False
         
         await self._bot.send_message(
             chat_id,
@@ -158,27 +173,24 @@ class RadioService:
         await self.skip()
 
     async def set_artist_mode(self, artist: str, chat_id: int):
-        """Включает режим проигрывания одного артиста на час."""
         self.artist_mode = artist
-        self.winning_genre = None # Отключаем жанр
-        self.current_mood = None # Сбрасываем настроение
+        self.winning_genre = None
+        self.current_mood = None
         self.mode_end_time = datetime.now() + timedelta(hours=1)
         self._playlist = []
         logger.info(f"[Режим] Включен режим артиста: {artist} на 1 час.")
         
         await self._update_status_message(f"🎤 Режим Артиста: **{artist}**")
-
-        await self.skip() # Пропускаем текущий трек, чтобы сразу начать новый режим
+        await self.skip()
 
     async def set_mood(self, mood: str, chat_id: int):
-        """Устанавливает радио по настроению на час."""
         if mood not in self._settings.RADIO_MOODS:
             logger.warning(f"[Режим] Попытка установить несуществующее настроение: {mood}")
             return
         
         self.current_mood = mood
-        self.artist_mode = None # Сбрасываем режим артиста
-        self.winning_genre = None # Сбрасываем жанр
+        self.artist_mode = None
+        self.winning_genre = None
         self.mode_end_time = datetime.now() + timedelta(hours=1)
         self._playlist = []
         
@@ -194,51 +206,53 @@ class RadioService:
 
 
     # --- Логика голосования ---
-
-    async def start_genre_vote(self, chat_id: int):
-        """Начинает 5-минутное голосование за жанр."""
+    async def _run_vote_lifecycle(self, chat_id: int):
+        """Полный жизненный цикл голосования: отправка, ожидание, завершение."""
         if self._vote_in_progress:
             return
 
         logger.info("[Голосование] Начинается голосование за жанр.")
         self._vote_in_progress = True
         self._votes = {}
-        self.artist_mode = None # Голосование отменяет режим артиста
-        self.current_mood = None # Голосование отменяет настроение
+        self.artist_mode = None
+        self.current_mood = None
 
-        # Выбираем 16 случайных жанров для этого голосования
         all_genres = self._settings.RADIO_GENRES
         sample_size = min(len(all_genres), 16)
         self._current_vote_genres = sorted(random.sample(all_genres, sample_size))
 
         try:
-            # Обновляем статус-сообщение, чтобы показать начало голосования
-            await self._update_status_message(
-                "📢 **Началось голосование за жанр!**\n\n"
-                "Выберите, что будет играть следующий час.",
-                reply_markup=get_genre_voting_keyboard(self._current_vote_genres, self._votes)
+            vote_message = await self._bot.send_message(
+                chat_id=chat_id,
+                text="📢 **Началось голосование за жанр!**\n\nВыберите, что будет играть следующий час. Голосование продлится 5 минут.",
+                reply_markup=get_genre_voting_keyboard(self._current_vote_genres, self._votes),
+                parse_mode=ParseMode.MARKDOWN,
             )
-            # Сохраняем информацию о сообщении для голосования отдельно от статус-сообщения
-            self.current_mode_message_info = self._status_message_info
+            self.current_vote_message_info = (chat_id, vote_message.message_id)
         except Exception as e:
-            logger.error(f"Не удалось обновить статус-сообщение для голосования: {e}")
-            self._vote_in_progress = False # Откатываем состояние
+            logger.error(f"Не удалось отправить сообщение для голосования: {e}")
+            self._vote_in_progress = False
             return
 
-        await asyncio.sleep(300) # 5 минут на голосование
-        if self._vote_in_progress: # Проверяем, не было ли отменено голосование
+        await asyncio.sleep(300)  # 5 минут на голосование
+        if self._vote_in_progress:
             await self.end_genre_vote(chat_id)
 
+    def start_genre_vote(self, chat_id: int):
+        """Запускает задачу жизненного цикла голосования."""
+        if self._vote_task and not self._vote_task.done():
+            logger.warning("[Голосование] Попытка запустить голосование, когда оно уже идет.")
+            return
+        self._vote_task = asyncio.create_task(self._run_vote_lifecycle(chat_id))
+
+
     def register_vote(self, genre: str, user_id: int) -> bool:
-        """Регистрирует голос пользователя."""
         if not self._vote_in_progress:
             return False
         
-        # Убираем старый голос пользователя, если он был
         for g in self._votes:
             self._votes[g].discard(user_id)
             
-        # Добавляем новый голос
         if genre not in self._votes:
             self._votes[genre] = set()
         self._votes[genre].add(user_id)
@@ -247,77 +261,81 @@ class RadioService:
         return True
 
     async def update_vote_keyboard(self):
-        """Обновляет клавиатуру голосования, чтобы показать текущие голоса."""
-        if not self._vote_in_progress:
+        if not self._vote_in_progress or not self.current_vote_message_info:
             return
         
-        await self._update_status_message(
-            "📢 **Началось голосование за жанр!**\n\n"
-            "Выберите, что будет играть следующий час. "
-            "Голосование продлится 5 минут.",
-            reply_markup=get_genre_voting_keyboard(self._current_vote_genres, self._votes)
-        )
+        chat_id, message_id = self.current_vote_message_info
+        try:
+            await self._bot.edit_message_reply_markup(
+                chat_id=chat_id,
+                message_id=message_id,
+                reply_markup=get_genre_voting_keyboard(self._current_vote_genres, self._votes)
+            )
+        except TelegramError as e:
+            if "not modified" not in str(e):
+                logger.warning(f"Не удалось обновить клавиатуру голосования: {e}")
+
 
     async def end_genre_vote(self, chat_id: int):
-        """Подводит итоги голосования."""
-        if not self._vote_in_progress:
+        if not self.current_vote_message_info:
             return
-            
-        logger.info("[Голосование] Голосование завершено. Подвожу итоги.")
-        self._vote_in_progress = False
-        self.current_mood = None # Голосование отменяет настроение
 
-        # Подсчет голосов
+        logger.info("[Голосование] Голосование завершено. Подвожу итоги.")
+        
         if self._votes:
             winner = max(self._votes, key=lambda g: len(self._votes[g]))
             self.winning_genre = winner
         else:
-            self.winning_genre = "rock" # Значение по умолчанию
+            self.winning_genre = random.choice(self._current_vote_genres)
         
         self.mode_end_time = datetime.now() + timedelta(hours=1)
-        self._playlist = [] # Очищаем плейлист
+        self._playlist = []
         
         announcement = f"🎉 **Голосование завершено!**\n\nСледующий час играет: **{self.winning_genre.capitalize()}**"
         logger.info(f"[Режим] По результатам голосования установлен жанр: {self.winning_genre}")
 
-        await self._update_status_message(announcement, reply_markup=None)
+        chat_id_vote, msg_id_vote = self.current_vote_message_info
+        try:
+            await self._bot.edit_message_text(
+                chat_id=chat_id_vote, message_id=msg_id_vote,
+                text=announcement, parse_mode=ParseMode.MARKDOWN, reply_markup=None
+            )
+        except TelegramError as e:
+            logger.warning(f"Не удалось обновить сообщение о голосовании результатами: {e}")
 
-        await self.skip() # Запускаем новый трек
+        # Сбрасываем состояние голосования
+        self.current_vote_message_info = None
+        self._vote_in_progress = False
+        self._vote_task = None
+
+        await self._update_status_message(f"🎶 Режим Радио: **{self.winning_genre.capitalize()}**")
+        await self.skip()
 
     # --- Внутренний цикл радио ---
     
     async def _update_status_message(self, text: str, reply_markup: InlineKeyboardMarkup = None):
-        """Безопасно обновляет статус-сообщение."""
         if not self._status_message_info:
             return
         
         chat_id, message_id = self._status_message_info
         try:
             await self._bot.edit_message_text(
-                chat_id=chat_id,
-                message_id=message_id,
-                text=text,
-                parse_mode=ParseMode.MARKDOWN,
-                reply_markup=reply_markup
+                chat_id=chat_id, message_id=message_id,
+                text=text, parse_mode=ParseMode.MARKDOWN, reply_markup=reply_markup
             )
         except TelegramError as e:
-            # Игнорируем ошибку "Message is not modified"
             if "not modified" not in str(e):
                 logger.warning(f"Не удалось обновить статус-сообщение: {e}")
 
     async def _get_next_query(self) -> str:
-        """Определяет, какой поисковый запрос использовать, на основе текущего режима."""
         if self.artist_mode:
             return self.artist_mode
         
-        # Если установлен режим настроения, выбираем случайный жанр из настроения
         if self.current_mood:
             genres_for_mood = self._settings.RADIO_MOODS.get(self.current_mood, ["music"])
             selected_genre = random.choice(genres_for_mood)
         else:
-            # Если жанр не определен или это первый запуск, используем дефолтный
             selected_genre = self.winning_genre or "rock"
-
 
         query_templates = [
             f"{selected_genre} official audio",
@@ -327,7 +345,6 @@ class RadioService:
         return random.choice(query_templates)
 
     async def _fetch_playlist(self, query: str):
-        """Запрашивает новый плейлист по заданному запросу."""
         logger.info(f"[Радио] Ищу треки по запросу: '{query}'")
         
         new_tracks = await self._downloader.search(
@@ -357,7 +374,6 @@ class RadioService:
             self.error_count += 1
 
     async def _send_audio(self, chat_id: int, result: DownloadResult):
-        """Отправляет аудиофайл в чат (без подписи)."""
         if not result.file_path or not os.path.exists(result.file_path):
             logger.error(f"[Радио] Файл для отправки не найден: {result.file_path}")
             return
@@ -367,7 +383,6 @@ class RadioService:
                 await self._bot.send_audio(
                     chat_id=chat_id, audio=audio_file, title=result.track_info.title,
                     performer=result.track_info.artist, duration=result.track_info.duration,
-                    # Убрали caption, т.к. вся инфа теперь в статус-сообщении
                     reply_markup=get_track_control_keyboard(),
                 )
         except TelegramError as e:
@@ -379,14 +394,10 @@ class RadioService:
                 logger.error(f"Не удалось удалить файл {result.file_path}: {e}")
 
     async def _radio_loop(self, chat_id: int):
-        """Основной цикл радио с проактивной подгрузкой и голосованием."""
-        # await self._bot.send_message(chat_id, "🎵 Радио запускается...")
-        
         while self._is_on and self.error_count < 10:
             try:
-                # Проверяем, не пора ли запустить новое голосование
                 if not self._vote_in_progress and (self.mode_end_time is None or datetime.now() >= self.mode_end_time):
-                    asyncio.create_task(self.start_genre_vote(chat_id))
+                    self.start_genre_vote(chat_id)
                     self.mode_end_time = datetime.now() + timedelta(hours=1)
                 
                 if len(self._playlist) < 5:
@@ -429,13 +440,11 @@ class RadioService:
                     await self._send_audio(chat_id, result)
                     
                     try:
-                        await asyncio.wait_for(
-                            self._skip_event.wait(), timeout=result.track_info.duration or self._settings.RADIO_COOLDOWN_S
-                        )
+                        await asyncio.wait_for(self._skip_event.wait(), timeout=90)
                         self._skip_event.clear()
-                        logger.info("[Радио] Трек пропущен по запросу или закончился.")
+                        logger.info("[Радио] Трек пропущен или его время истекло.")
                     except asyncio.TimeoutError:
-                        pass 
+                        logger.info("[Радио] 90 секунд истекли, переключаюсь на следующий трек.")
                 else:
                     logger.warning(f"[Радио] Ошибка скачивания: {result.error}")
                     self.error_count += 1
@@ -454,7 +463,6 @@ class RadioService:
             logger.error("[Радио] Превышено макс. кол-во ошибок. Радио остановлено.")
             await self._update_status_message("⚠️ Радио было остановлено из-за большого количества ошибок.")
         
-        # Финальное обновление статуса при штатной остановке
         elif not self._is_on:
              await self._update_status_message("⏹️ Радио остановлено.")
 
