@@ -251,7 +251,7 @@ class YouTubeDownloader(BaseDownloader):
         min_likes: Optional[int] = None,
         min_like_ratio: Optional[float] = None,
         # Мягкий фильтр для радио, чтобы предпочитать муз. контент
-        match_filter: str = "title?~='audio'&duration>60"
+        match_filter: str = "duration > 60"
     ) -> List[TrackInfo]:
         search_query = f"ytsearch{limit}:{query}"
         ydl_opts = self._get_ydl_options(is_search=True, match_filter=match_filter)
