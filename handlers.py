@@ -305,16 +305,23 @@ class TrackCallbackHandler(BaseHandler):
                 if "message is not modified" not in str(e): logger.warning(e)
             return
 
-        if rating_changed:
-            # Обновляем caption, чтобы показать новый счетчик
-            base_caption = "\n".join(query.message.caption.split("\n\n")[:-1])
+        if rating_changed and query.message.caption:
+            # Обновляем caption, чтобы показать новый счетчик, только если он есть
+            # Берем все, кроме последней строки (где рейтинг)
+            base_caption = "\n\n".join(query.message.caption.split("\n\n")[:-1])
+            
             new_caption = (
                 f"{base_caption}\n\n"
                 f"❤️ {new_likes}  💔 {new_dislikes}"
             )
-            try:
-                await query.edit_message_caption(caption=new_caption, parse_mode=ParseMode.MARKDOWN)
-            except BadRequest as e:
-                if "message is not modified" not in str(e): logger.warning(e)
+            
+            # Проверяем, изменился ли caption, чтобы не отправлять лишних запросов
+            if new_caption != query.message.caption:
+                try:
+                    # parse_mode=None, так как мы не меняем разметку, а только текст
+                    await query.edit_message_caption(caption=new_caption)
+                except BadRequest as e:
+                    if "message is not modified" not in str(e):
+                        logger.warning(f"Ошибка при обновлении caption с рейтингом: {e}")
 
         await query.answer()
