@@ -66,46 +66,8 @@ async def set_bot_commands(app: Application, settings: Settings):
             except Exception as e:
                 logger.error(f"❌ Не удалось установить команды для админа {admin_id}: {e}")
 
-
-async def start_bot() -> None:
-    """Асинхронная функция для настройки и запуска бота."""
-    settings = get_settings()
-    
-    app = Application.builder().token(settings.BOT_TOKEN).build()
-    container = create_container(app.bot)
-
-    # --- Регистрация обработчиков ---
-    app.add_handler(CommandHandler(["start", "help", "menu", "m"], container.resolve(StartHandler).handle))
-    
-    app.add_handler(CommandHandler(["play", "p"], container.resolve(PlayHandler).handle))
-    app.add_handler(MessageHandler(filters.REPLY, container.resolve(PlayHandler).handle))
-
-    app.add_handler(CommandHandler(["dedicate", "d"], container.resolve(DedicateHandler).handle))
-    app.add_handler(CommandHandler(["artist", "art"], container.resolve(ArtistCommandHandler).handle))
-    app.add_handler(CommandHandler(["admin", "a"], container.resolve(AdminPanelHandler).handle))
-    app.add_handler(CommandHandler(["playlist", "pl"], container.resolve(PlaylistHandler).handle))
-
-    app.add_handler(CallbackQueryHandler(container.resolve(AdminCallbackHandler).handle, pattern="^admin:.*"))
-    app.add_handler(CallbackQueryHandler(container.resolve(MenuCallbackHandler).handle, pattern="^menu:.*"))
-    app.add_handler(CallbackQueryHandler(container.resolve(TrackCallbackHandler).handle, pattern="^track:.*"))
-    app.add_handler(CallbackQueryHandler(container.resolve(VoteCallbackHandler).handle, pattern=f"^{VoteCallback.PREFIX}.*"))
-    app.add_handler(CallbackQueryHandler(container.resolve(GenreCallbackHandler).handle, pattern=f"^{GenreCallback.PREFIX}.*"))
-    app.add_handler(CallbackQueryHandler(container.resolve(MoodCallbackHandler).handle, pattern=f"^{MoodCallback.PREFIX}.*"))
-
-    # Добавляем post_init для асинхронной инициализации сервисов после инициализации Application
-    async def post_init(application: Application) -> None:
-        await set_bot_commands(application, settings)
-        cache_service = container.resolve(CacheService)
-        await cache_service.initialize()
-    
-    app.post_init = post_init
-    
-    # Используем run_polling, который теперь будет работать корректно
-    await app.run_polling(drop_pending_updates=True)
-
-
 def main() -> None:
-    """Основная синхронная функция для запуска бота."""
+    """Основная функция запуска бота."""
     settings = get_settings()
     setup_logging(settings)
 
@@ -117,13 +79,33 @@ def main() -> None:
             logger.error(f"❌ Не удалось создать cookies.txt: {e}")
 
     logger.info("🚀 Запуск Music Bot v4.1...")
+
+    app = Application.builder().token(settings.BOT_TOKEN).build()
+    container = create_container(app.bot)
+
+    # --- Регистрация обработчиков ---
+    app.add_handler(CommandHandler(["start", "help", "menu", "m"], container.resolve(StartHandler).handle))
+    app.add_handler(CommandHandler(["play", "p"], container.resolve(PlayHandler).handle))
+    app.add_handler(MessageHandler(filters.REPLY, container.resolve(PlayHandler).handle))
+    app.add_handler(CommandHandler(["dedicate", "d"], container.resolve(DedicateHandler).handle))
+    app.add_handler(CommandHandler(["artist", "art"], container.resolve(ArtistCommandHandler).handle))
+    app.add_handler(CommandHandler(["admin", "a"], container.resolve(AdminPanelHandler).handle))
+    app.add_handler(CommandHandler(["playlist", "pl"], container.resolve(PlaylistHandler).handle))
+    app.add_handler(CallbackQueryHandler(container.resolve(AdminCallbackHandler).handle, pattern="^admin:.*"))
+    app.add_handler(CallbackQueryHandler(container.resolve(MenuCallbackHandler).handle, pattern="^menu:.*"))
+    app.add_handler(CallbackQueryHandler(container.resolve(TrackCallbackHandler).handle, pattern="^track:.*"))
+    app.add_handler(CallbackQueryHandler(container.resolve(VoteCallbackHandler).handle, pattern=f"^{VoteCallback.PREFIX}.*"))
+    app.add_handler(CallbackQueryHandler(container.resolve(GenreCallbackHandler).handle, pattern=f"^{GenreCallback.PREFIX}.*"))
+    app.add_handler(CallbackQueryHandler(container.resolve(MoodCallbackHandler).handle, pattern=f"^{MoodCallback.PREFIX}.*"))
+
+    async def post_init(application: Application) -> None:
+        await set_bot_commands(application, settings)
+        cache_service = container.resolve(CacheService)
+        await cache_service.initialize()
     
-    try:
-        asyncio.run(start_bot())
-    except (KeyboardInterrupt, SystemExit):
-        logger.info("👋 Бот остановлен.")
-    except Exception as e:
-        logger.critical(f"❌ Критическая ошибка при запуске бота: {e}", exc_info=True)
+    app.post_init = post_init
+    
+    app.run_polling(drop_pending_updates=True)
 
 
 if __name__ == "__main__":
