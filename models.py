@@ -17,7 +17,7 @@ class DownloadResult:
     """
     success: bool
     file_path: Optional[str] = None
-    track_info: Optional[TrackInfo] = None
+    track_info: Optional["TrackInfo"] = None
     error: Optional[str] = None
 
     def to_dict(self) -> dict:
