@@ -47,7 +47,20 @@ class StartHandler(BaseHandler):
 
 class PlayHandler(BaseHandler):
     async def handle(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        query = update.message.text if update.message.reply_to_message else " ".join(context.args)
+        query = ""
+        # Проверяем, ждет ли бот название трека (после нажатия кнопки "Заказать трек")
+        if context.user_data.get("waiting_for_track_name"):
+            if update.message and update.message.text:
+                query = update.message.text
+                context.user_data["waiting_for_track_name"] = False  # Сбрасываем флаг после получения запроса
+            else:
+                await update.message.reply_text("⚠️ Пожалуйста, введите название трека после запроса.")
+                return
+        elif update.message.text and update.message.text.startswith('/play') or update.message.text.startswith('/p'): # Если это команда /play
+            query = " ".join(context.args)
+        else: # Если это простое сообщение, не являющееся командой и не ответ на ForceReply, то игнорируем
+            return
+        
         if not query:
             await update.message.reply_text("⚠️ Укажите название трека.")
             return
@@ -209,6 +222,7 @@ class MenuCallbackHandler(BaseHandler):
             await query.edit_message_text("👑 **Админ-панель**", reply_markup=get_admin_panel_keyboard(self._radio.is_on))
         elif action == MenuCallback.PLAY_TRACK:
             await query.message.reply_text(text="🎧 Название трека?", reply_markup=ForceReply(selective=True))
+            context.user_data["waiting_for_track_name"] = True # Устанавливаем флаг
             await query.message.delete()
         elif action == MenuCallback.CHOOSE_MOOD:
             await query.edit_message_text("😊 **Выберите настроение:**", reply_markup=get_mood_choice_keyboard())

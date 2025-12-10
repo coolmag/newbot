@@ -151,7 +151,7 @@ class YouTubeDownloader(BaseDownloader):
             "    (title?~='audio|lyric|альбом|album') |"
             "    (channel?~=' - Topic$')"
             ") & "
-            "!title?~='live|short|концерт|выступление|official video|music video|full show|interview|parody|влог|vlog|топ 10|top 10|top 25|greatest moments'"
+            "!title?~='live|short|концерт|выступление|official video|music video|full show|interview|parody|влог|vlog|топ 10|top 10|top 25|greatest moments|playlist|mix|сборник|best of'"
         )
 
         # 3. Попытка №1: Строгий поиск с фильтром
