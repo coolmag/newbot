@@ -1,6 +1,5 @@
 import asyncio
 import logging
-from typing import TYPE_CHECKING
 
 from telegram import Update, ForceReply, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.constants import ParseMode
@@ -14,10 +13,9 @@ from keyboards import (
 )
 from constants import AdminCallback, MenuCallback, TrackCallback, GenreCallback, VoteCallback, MoodCallback
 from cache_service import CacheService
-
-if TYPE_CHECKING:
-    from downloaders import YouTubeDownloader
-    from radio import RadioService
+from downloaders import YouTubeDownloader
+from radio import RadioService
+from models import TrackInfo
 
 logger = logging.getLogger(__name__)
 
