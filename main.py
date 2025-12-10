@@ -81,51 +81,58 @@ async def main() -> None:
 
     logger.info("🚀 Запуск Music Bot v4.1...")
 
-    async with Application.builder().token(settings.BOT_TOKEN).build() as app:
-        container = create_container(app.bot)
+    app = Application.builder().token(settings.BOT_TOKEN).build()
+    container = create_container(app.bot)
 
-        # --- Регистрация обработчиков ---
-        app.add_handler(CommandHandler(["start", "help", "menu", "m"], container.resolve(StartHandler).handle))
-        
-        app.add_handler(CommandHandler(["play", "p"], container.resolve(PlayHandler).handle))
-        app.add_handler(MessageHandler(filters.REPLY, container.resolve(PlayHandler).handle))
+    # --- Регистрация обработчиков ---
+    app.add_handler(CommandHandler(["start", "help", "menu", "m"], container.resolve(StartHandler).handle))
+    
+    app.add_handler(CommandHandler(["play", "p"], container.resolve(PlayHandler).handle))
+    app.add_handler(MessageHandler(filters.REPLY, container.resolve(PlayHandler).handle))
 
-        app.add_handler(CommandHandler(["dedicate", "d"], container.resolve(DedicateHandler).handle))
-        app.add_handler(CommandHandler(["artist", "art"], container.resolve(ArtistCommandHandler).handle))
-        app.add_handler(CommandHandler(["admin", "a"], container.resolve(AdminPanelHandler).handle))
-        app.add_handler(CommandHandler(["playlist", "pl"], container.resolve(PlaylistHandler).handle))
+    app.add_handler(CommandHandler(["dedicate", "d"], container.resolve(DedicateHandler).handle))
+    app.add_handler(CommandHandler(["artist", "art"], container.resolve(ArtistCommandHandler).handle))
+    app.add_handler(CommandHandler(["admin", "a"], container.resolve(AdminPanelHandler).handle))
+    app.add_handler(CommandHandler(["playlist", "pl"], container.resolve(PlaylistHandler).handle))
 
-        app.add_handler(CallbackQueryHandler(container.resolve(AdminCallbackHandler).handle, pattern="^admin:.*"))
-        app.add_handler(CallbackQueryHandler(container.resolve(MenuCallbackHandler).handle, pattern="^menu:.*"))
-        app.add_handler(CallbackQueryHandler(container.resolve(TrackCallbackHandler).handle, pattern="^track:.*"))
-        app.add_handler(CallbackQueryHandler(container.resolve(VoteCallbackHandler).handle, pattern=f"^{VoteCallback.PREFIX}.*"))
-        app.add_handler(CallbackQueryHandler(container.resolve(GenreCallbackHandler).handle, pattern=f"^{GenreCallback.PREFIX}.*"))
-        app.add_handler(CallbackQueryHandler(container.resolve(MoodCallbackHandler).handle, pattern=f"^{MoodCallback.PREFIX}.*"))
+    app.add_handler(CallbackQueryHandler(container.resolve(AdminCallbackHandler).handle, pattern="^admin:.*"))
+    app.add_handler(CallbackQueryHandler(container.resolve(MenuCallbackHandler).handle, pattern="^menu:.*"))
+    app.add_handler(CallbackQueryHandler(container.resolve(TrackCallbackHandler).handle, pattern="^track:.*"))
+    app.add_handler(CallbackQueryHandler(container.resolve(VoteCallbackHandler).handle, pattern=f"^{VoteCallback.PREFIX}.*"))
+    app.add_handler(CallbackQueryHandler(container.resolve(GenreCallbackHandler).handle, pattern=f"^{GenreCallback.PREFIX}.*"))
+    app.add_handler(CallbackQueryHandler(container.resolve(MoodCallbackHandler).handle, pattern=f"^{MoodCallback.PREFIX}.*"))
 
+    # --- Запуск ---
+    try:
+        await app.initialize()
         await set_bot_commands(app, settings)
         
-        # --- Запуск ---
-        try:
-            cache_service = container.resolve(CacheService)
-            await cache_service.initialize()
+        cache_service = container.resolve(CacheService)
+        await cache_service.initialize()
 
-            logger.info("✅ Бот запущен и готов к работе.")
-            await app.run_polling(drop_pending_updates=True)
+        logger.info("✅ Бот запущен и готов к работе.")
+        await app.updater.start_polling(drop_pending_updates=True)
+        await asyncio.Event().wait()
 
-        except (KeyboardInterrupt, SystemExit):
-            logger.info("👋 Получен сигнал остановки...")
-        except Exception as e:
-            logger.critical(f"❌ Критическая ошибка при запуске бота: {e}", exc_info=True)
-        finally:
-            logger.info("🛑 Останавливаю сервисы...")
-            radio_service = container.resolve(RadioService)
-            if radio_service.is_on:
-                await radio_service.stop()
-            
-            cache_service = container.resolve(CacheService)
-            await cache_service.close()
-            
-            logger.info("👋 Бот остановлен.")
+    except (KeyboardInterrupt, SystemExit):
+        logger.info("👋 Получен сигнал остановки...")
+    except Exception as e:
+        logger.critical(f"❌ Критическая ошибка при запуске бота: {e}", exc_info=True)
+    finally:
+        logger.info("🛑 Останавливаю сервисы...")
+        if app.updater and app.updater.running:
+            await app.updater.stop()
+
+        radio_service = container.resolve(RadioService)
+        if radio_service.is_on:
+            await radio_service.stop()
+        
+        cache_service = container.resolve(CacheService)
+        await cache_service.close()
+        
+        await app.shutdown()
+        
+        logger.info("👋 Бот остановлен.")
 
 
 if __name__ == "__main__":
