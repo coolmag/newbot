@@ -56,7 +56,7 @@ class PlayHandler(BaseHandler):
             else:
                 await update.message.reply_text("⚠️ Пожалуйста, введите название трека после запроса.")
                 return
-        elif update.message.text and update.message.text.startswith('/play') or update.message.text.startswith('/p'): # Если это команда /play
+        elif update.message and update.message.text and (update.message.text.startswith('/play') or update.message.text.startswith('/p')): # Если это команда /play
             query = " ".join(context.args)
         else: # Если это простое сообщение, не являющееся командой и не ответ на ForceReply, то игнорируем
             return
