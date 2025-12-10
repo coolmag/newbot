@@ -282,7 +282,7 @@ class RadioService:
 
         await self._update_status_message(announcement, reply_markup=None)
 
-        self.skip() # Запускаем новый трек
+        await self.skip() # Запускаем новый трек
 
     # --- Внутренний цикл радио ---
     

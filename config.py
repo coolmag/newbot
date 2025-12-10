@@ -52,33 +52,37 @@ class Settings(BaseSettings):
     RADIO_GENRES: List[str] = [
         # --- Рок ---
         "rock", "classic rock", "psychedelic rock", "indie rock", "alternative rock", "hard rock", 
-        "post-punk", "metal", "industrial", "gothic rock",
-        
-        # --- Поп и танцевальная ---
-        "pop", "new wave", "disco", "r&b",
+        "post-punk", "metal", "industrial", "gothic rock", "punk rock", "progressive rock",
+        "pop rock", "alternative rock", "grunge", "britpop", "emo", "indie rock",
+        "rock and roll",
 
+        # --- Поп и танцевальная ---
+        "pop", "new wave", "disco", "r&b", "traditional pop", "synth-pop", "latin pop", "k-pop",
+        
         # --- Соул, Фанк, Грув ---
-        "soul", "funk", "soul groove", "jazz-funk", "rare groove", "modern soul",
+        "soul", "funk", "soul groove", "jazz-funk", "rare groove", "modern soul", "neo-soul",
         
         # --- Джаз и Блюз ---
-        "jazz", "blues",
+        "jazz", "blues", "doo-wop",
 
         # --- Электроника (общая) ---
-        "electronic", "ambient", "chillwave", "lofi hip-hop", "downtempo",
+        "electronic", "ambient", "chillwave", "lofi hip-hop", "downtempo", "edm (electronic dance music)",
+        "trap", "hyperpop", "synthwave",
 
         # --- Танцевальная электроника (House, Techno и др.) ---
         "house", "deep house", "deep tech house", "progressive house", "tech house", "chill house", "tropical house",
         "techno", "minimal techno", "trance", "drum and bass", "dubstep", "uk garage", 
-        "breakbeat", "hardstyle", "phonk", "future bass", "ambient house",
+        "breakbeat", "hardstyle", "phonk", "future bass", "ambient house", "trip-hop",
 
-        # --- Ретро и синт-поп ---
-        "synthwave", "retrowave", "cyberpunk", "vaporwave",
-
+        # --- DJ-сеты и ремиксы ---
+        "extended mix", "kraken music", "craken remix", "club mix", "dj set",
+        "hardwell", "armin van buuren", "tiesto", "david guetta", "daft punk",
+        
         # --- Хип-хоп / Рэп ---
-        "hip-hop", "rap", 
-
+        "hip-hop", "rap", "drill",
+        
         # --- Классика, фолк и этника ---
-        "classical", "orchestral", "soundtrack", "folk", "country", "reggae", "latin", "world music",
+        "classical", "orchestral", "soundtrack", "folk", "country", "reggae", "latin", "world music", "afrobeats", "reggaeton", "ska",
 
         # --- Русскоязычные (поп и рок) ---
         "русская поп-музыка", "русский рок", "русский панк-рок", "русский пост-панк",
@@ -90,7 +94,10 @@ class Settings(BaseSettings):
         "советский грув", "советский фанк", "советский джаз", "советская эстрада",
 
         # --- Русскоязычные (авторское и шансон) ---
-        "шансон", "бардовская песня", "авторская песня", "русские романсы"
+        "шансон", "бардовская песня", "авторская песня", "русские романсы",
+        
+        # --- Дополнительные ---
+        "bedroom pop"
     ]
 
     RADIO_MOODS: Dict[str, List[str]] = {

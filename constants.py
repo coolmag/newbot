@@ -34,6 +34,11 @@ class MoodCallback:
     PREFIX = "mood:"
 
 
+class ConversationState(Enum):
+    """Состояния для ConversationHandler."""
+    WAITING_SONG = 1
+
+
 class TrackCallback(str, Enum):
     """Callback data для панели управления треком."""
     LIKE = "track:like"
