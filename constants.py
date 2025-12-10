@@ -39,9 +39,10 @@ class ConversationState(Enum):
     WAITING_SONG = 1
 
 
-class TrackCallback(str, Enum):
-    """Callback data для панели управления треком."""
-    LIKE = "track:like"
-    DISLIKE = "track:dislike"
-    ADD_TO_PLAYLIST = "track:add_to_playlist"
-    DELETE = "track:delete"
+class TrackCallback:
+    """Префиксы и действия для колбэков управления треком."""
+    PREFIX = "track:"
+    LIKE = "like"
+    DISLIKE = "dislike"
+    ADD_TO_PLAYLIST = "add_to_playlist"
+    DELETE = "delete"

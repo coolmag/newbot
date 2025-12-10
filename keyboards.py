@@ -39,16 +39,21 @@ def get_admin_panel_keyboard(is_radio_on: bool) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(keyboard)
 
 
-def get_track_control_keyboard() -> InlineKeyboardMarkup:
+def get_track_control_keyboard(track_id: str, is_in_favorites: bool = False) -> InlineKeyboardMarkup:
     """
     Возвращает клавиатуру для управления треком.
+    :param track_id: Уникальный идентификатор трека (YouTube ID).
+    :param is_in_favorites: Находится ли трек в избранном у пользователя.
     """
+    add_to_playlist_text = "⭐ В избранном" if is_in_favorites else "➕ В избранное"
+    
     keyboard = [
         [
-            InlineKeyboardButton("❤️", callback_data=TrackCallback.LIKE),
-            InlineKeyboardButton("💔", callback_data=TrackCallback.DISLIKE),
-            InlineKeyboardButton("➕ В плейлист", callback_data=TrackCallback.ADD_TO_PLAYLIST),
-            InlineKeyboardButton("🗑️", callback_data=TrackCallback.DELETE),
+            InlineKeyboardButton("❤️", callback_data=f"{TrackCallback.PREFIX}{TrackCallback.LIKE}:{track_id}"),
+            InlineKeyboardButton("💔", callback_data=f"{TrackCallback.PREFIX}{TrackCallback.DISLIKE}:{track_id}"),
+            InlineKeyboardButton(add_to_playlist_text, callback_data=f"{TrackCallback.PREFIX}{TrackCallback.ADD_TO_PLAYLIST}:{track_id}"),
+            # Кнопка удаления остается простой, т.к. она просто удаляет сообщение
+            InlineKeyboardButton("🗑️", callback_data=f"{TrackCallback.PREFIX}{TrackCallback.DELETE}"),
         ]
     ]
     return InlineKeyboardMarkup(keyboard)

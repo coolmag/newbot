@@ -17,6 +17,7 @@ from handlers import (
     VoteCallbackHandler,
     DedicateHandler,
     MoodCallbackHandler,
+    PlaylistHandler,
 )
 from config import Settings, get_settings
 from constants import VoteCallback, GenreCallback, MoodCallback
@@ -37,6 +38,8 @@ async def set_bot_commands(app: Application, settings: Settings):
         BotCommand("help", "ℹ️ Показать справку"),
         BotCommand("play", "🎵 Найти и скачать трек"),
         BotCommand("p", "🎵 Найти и скачать трек"),
+        BotCommand("playlist", "⭐ Показать избранное"),
+        BotCommand("pl", "⭐ Показать избранное"),
         BotCommand("menu", "🎛️ Показать главное меню"),
         BotCommand("m", "🎛️ Показать главное меню"),
         BotCommand("dedicate", "🎧 Посвятить трек пользователю"),
@@ -90,6 +93,7 @@ async def main() -> None:
         app.add_handler(CommandHandler(["dedicate", "d"], container.resolve(DedicateHandler).handle))
         app.add_handler(CommandHandler(["artist", "art"], container.resolve(ArtistCommandHandler).handle))
         app.add_handler(CommandHandler(["admin", "a"], container.resolve(AdminPanelHandler).handle))
+        app.add_handler(CommandHandler(["playlist", "pl"], container.resolve(PlaylistHandler).handle))
 
         app.add_handler(CallbackQueryHandler(container.resolve(AdminCallbackHandler).handle, pattern="^admin:.*"))
         app.add_handler(CallbackQueryHandler(container.resolve(MenuCallbackHandler).handle, pattern="^menu:.*"))

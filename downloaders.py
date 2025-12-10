@@ -267,17 +267,27 @@ class YouTubeDownloader(BaseDownloader):
             results = []
             for e in entries:
                 if not (e and e.get("id") and e.get("title")):
+                    logger.debug(f"[YouTube Search Debug] Пропущен трек (без названия или ID): {e}")
                     continue
                 
-                duration = int(e.get("duration") or 0)
-                if (min_duration and duration < min_duration) or \
-                   (max_duration and duration > max_duration):
+                raw_duration = e.get("duration")
+                duration = int(raw_duration or 0)
+                
+                logger.debug(f"[YouTube Search Debug] Трек: '{e.get('title')}' (ID: {e.get('id')}), Длительность (raw): {raw_duration}, Длительность (int): {duration}")
+
+                if min_duration and duration < min_duration:
+                    logger.debug(f"[YouTube Search Debug] Пропущен трек '{e.get('title')}' (ID: {e.get('id')}) - слишком короткий ({duration} < {min_duration}).")
+                    continue
+                if max_duration and duration > max_duration:
+                    logger.debug(f"[YouTube Search Debug] Пропущен трек '{e.get('title')}' (ID: {e.get('id')}) - слишком длинный ({duration} > {max_duration}).")
                     continue
 
                 if min_views and (e.get("view_count") is None or e.get("view_count") < min_views):
+                    logger.debug(f"[YouTube Search Debug] Пропущен трек '{e.get('title')}' (ID: {e.get('id')}) - недостаточно просмотров ({e.get('view_count')} < {min_views}).")
                     continue
 
                 if min_likes and (e.get("like_count") is None or e.get("like_count") < min_likes):
+                    logger.debug(f"[YouTube Search Debug] Пропущен трек '{e.get('title')}' (ID: {e.get('id')}) - недостаточно лайков ({e.get('like_count')} < {min_likes}).")
                     continue
                 
                 results.append(TrackInfo(

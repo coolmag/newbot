@@ -1,28 +1,33 @@
 import asyncio
 import logging
+from typing import TYPE_CHECKING
 
 from telegram import Update, ForceReply, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
+from telegram.error import BadRequest
 
 from config import Settings
 from keyboards import (
     get_main_menu_keyboard, get_admin_panel_keyboard, get_track_control_keyboard,
-    get_genre_choice_keyboard, get_genre_voting_keyboard, get_voting_in_progress_keyboard,
-    get_mood_choice_keyboard
+    get_genre_choice_keyboard, get_mood_choice_keyboard
 )
 from constants import AdminCallback, MenuCallback, TrackCallback, GenreCallback, VoteCallback, MoodCallback
-from downloaders import YouTubeDownloader
-from radio import RadioService
+from cache_service import CacheService
+
+if TYPE_CHECKING:
+    from downloaders import YouTubeDownloader
+    from radio import RadioService
 
 logger = logging.getLogger(__name__)
 
 
 class BaseHandler:
-    def __init__(self, settings: Settings, radio_service: RadioService = None, downloader: YouTubeDownloader = None):
+    def __init__(self, settings: Settings, radio_service: "RadioService" = None, downloader: "YouTubeDownloader" = None, cache_service: "CacheService" = None):
         self._settings = settings
         self._radio = radio_service
         self._downloader = downloader
+        self._cache = cache_service
 
     def is_admin(self, update: Update) -> bool:
         if not update.effective_user:
@@ -54,15 +59,25 @@ class PlayHandler(BaseHandler):
 
         if result.success:
             try:
+                is_in_favs = await self._cache.is_in_favorites(update.effective_user.id, result.track_info.identifier)
+                likes, dislikes = await self._cache.get_ratings(result.track_info.identifier)
+                
+                caption = (
+                    f"✅ `{result.track_info.display_name}`\n\n"
+                    f"❤️ {likes}  💔 {dislikes}"
+                )
+                
                 with open(result.file_path, "rb") as audio:
                     await context.bot.send_audio(
                         chat_id=update.effective_chat.id, audio=audio,
                         title=result.track_info.title, performer=result.track_info.artist,
-                        duration=result.track_info.duration, caption=f"✅ `{result.track_info.display_name}`",
-                        parse_mode=ParseMode.MARKDOWN, reply_markup=get_track_control_keyboard(),
+                        duration=result.track_info.duration, caption=caption,
+                        parse_mode=ParseMode.MARKDOWN, 
+                        reply_markup=get_track_control_keyboard(result.track_info.identifier, is_in_favs),
                     )
                 await search_msg.delete()
-            except Exception:
+            except Exception as e:
+                logger.error(f"Ошибка при отправке файла: {e}", exc_info=True)
                 await search_msg.edit_text("❌ Ошибка при отправке файла.")
         else:
             await search_msg.edit_text(f"❌ Не удалось найти `{query}`. {result.error}")
@@ -72,48 +87,64 @@ class DedicateHandler(BaseHandler):
     async def handle(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         sender = update.effective_user
         if not context.args or len(context.args) < 2:
-            await update.message.reply_text(
-                "⚠️ Неправильный формат. Используйте: `/d @username <название песни>`",
-                parse_mode=ParseMode.MARKDOWN
-            )
+            await update.message.reply_text("⚠️ Неправильный формат. Используйте: `/d @username <название песни>`", parse_mode=ParseMode.MARKDOWN)
             return
 
-        recipient = context.args[0]
+        recipient, query_list = context.args[0], context.args[1:]
         if not recipient.startswith('@'):
-            await update.message.reply_text(
-                "⚠️ Неправильный формат. Первым должно идти имя пользователя, начиная с @.",
-                parse_mode=ParseMode.MARKDOWN
-            )
+            await update.message.reply_text("⚠️ Неправильный формат. Первым должно идти имя пользователя, начиная с @.", parse_mode=ParseMode.MARKDOWN)
             return
             
-        query = " ".join(context.args[1:])
-        
+        query = " ".join(query_list)
         search_msg = await update.message.reply_text(f"🔍 Ищу '{query}' для {recipient}...", parse_mode=ParseMode.MARKDOWN)
         result = await self._downloader.download_with_retry(query)
 
         if result.success:
             try:
+                is_in_favs = await self._cache.is_in_favorites(update.effective_user.id, result.track_info.identifier)
+                likes, dislikes = await self._cache.get_ratings(result.track_info.identifier)
+
+                caption = (
+                    f"🎧 Этот трек для {recipient} от {sender.mention_markdown()}!\n\n"
+                    f"✅ `{result.track_info.display_name}`\n\n"
+                    f"❤️ {likes}  💔 {dislikes}"
+                )
                 with open(result.file_path, "rb") as audio:
-                    caption = (
-                        f"🎧 Этот трек для {recipient} от {sender.mention_markdown()}!\n\n"
-                        f"✅ `{result.track_info.display_name}`"
-                    )
                     await context.bot.send_audio(
-                        chat_id=update.effective_chat.id,
-                        audio=audio,
-                        title=result.track_info.title,
-                        performer=result.track_info.artist,
-                        duration=result.track_info.duration,
-                        caption=caption,
+                        chat_id=update.effective_chat.id, audio=audio,
+                        title=result.track_info.title, performer=result.track_info.artist,
+                        duration=result.track_info.duration, caption=caption,
                         parse_mode=ParseMode.MARKDOWN,
-                        reply_markup=get_track_control_keyboard(),
+                        reply_markup=get_track_control_keyboard(result.track_info.identifier, is_in_favs),
                     )
                 await search_msg.delete()
             except Exception as e:
-                logger.error(f"Ошибка при отправке трека-посвящения: {e}")
+                logger.error(f"Ошибка при отправке трека-посвящения: {e}", exc_info=True)
                 await search_msg.edit_text("❌ Ошибка при отправке файла.")
         else:
             await search_msg.edit_text(f"❌ Не удалось найти `{query}`. {result.error}")
+
+
+class PlaylistHandler(BaseHandler):
+    async def handle(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        user_id = update.effective_user.id
+        favorites = await self._cache.get_favorites(user_id)
+
+        if not favorites:
+            await update.message.reply_text("✨ Ваше 'Избранное' пока пусто. Добавляйте треки кнопкой '➕ В избранное' под плеером.")
+            return
+        
+        message_parts = ["**✨ Ваше избранное:**\n"]
+        for i, track in enumerate(favorites, 1):
+            message_parts.append(f"{i}. `{track.display_name}` ({track.format_duration()})")
+        
+        # Разделяем сообщение, если оно слишком длинное
+        full_message = "\n".join(message_parts)
+        if len(full_message) > 4096:
+            # TODO: Добавить постраничную навигацию для очень больших плейлистов
+            await update.message.reply_text("\n".join(message_parts[:50]))
+        else:
+            await update.message.reply_text(full_message, parse_mode=ParseMode.MARKDOWN)
 
 
 class MenuHandler(BaseHandler):
@@ -127,10 +158,7 @@ class MenuHandler(BaseHandler):
 
 class AdminPanelHandler(BaseHandler):
     async def handle(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        if not self.is_admin(update):
-            await update.message.reply_text("⛔ Только для администраторов.")
-            return
-        
+        if not self.is_admin(update): return
         await update.message.reply_text(
             "👑 **Админ-панель**",
             reply_markup=get_admin_panel_keyboard(self._radio.is_on),
@@ -138,52 +166,21 @@ class AdminPanelHandler(BaseHandler):
         )
 
 
-class ArtistCommandHandler(BaseHandler):
-    async def handle(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        if not self.is_admin(update):
-            await update.message.reply_text("⛔ Только для администраторов.")
-            return
-        
-        artist = " ".join(context.args)
-        if not artist:
-            await update.message.reply_text("⚠️ Укажите имя артиста. `/artist <имя>`")
-            return
-        
-        await self._radio.set_artist_mode(artist, update.effective_chat.id)
-        await update.message.reply_text(f"✅ Включаю режим артиста: **{artist}**", parse_mode=ParseMode.MARKDOWN)
-
-
 class AdminCallbackHandler(BaseHandler):
     async def handle(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         query = update.callback_query
         await query.answer()
-
-        if not self.is_admin(update):
-            await query.answer("⛔ Только для администраторов.", show_alert=True)
-            return
+        if not self.is_admin(update): return
 
         action = query.data
-        if action == AdminCallback.RADIO_ON:
-            await self._radio.start(update.effective_chat.id)
-        elif action == AdminCallback.RADIO_OFF:
-            await self._radio.stop()
-        elif action == AdminCallback.RADIO_SKIP:
-            await self._radio.skip()
-            await query.answer("⏭️ Пропускаю трек...")
-            return
+        if action == AdminCallback.RADIO_ON: await self._radio.start(update.effective_chat.id)
+        elif action == AdminCallback.RADIO_OFF: await self._radio.stop()
+        elif action == AdminCallback.RADIO_SKIP: await self._radio.skip()
         elif action == AdminCallback.CHANGE_GENRE:
-            await query.edit_message_text(
-                "🎶 **Выберите жанр для радио:**",
-                reply_markup=get_genre_choice_keyboard(),
-                parse_mode=ParseMode.MARKDOWN,
-            )
-            return # Return to prevent redrawing the admin panel
+            await query.edit_message_text("🎶 **Выберите жанр для радио:**", reply_markup=get_genre_choice_keyboard())
+            return
         
-        await query.edit_message_text(
-            "👑 **Админ-панель**",
-            reply_markup=get_admin_panel_keyboard(self._radio.is_on),
-            parse_mode=ParseMode.MARKDOWN,
-        )
+        await query.edit_message_text("👑 **Админ-панель**", reply_markup=get_admin_panel_keyboard(self._radio.is_on))
 
 
 class MenuCallbackHandler(BaseHandler):
@@ -193,90 +190,42 @@ class MenuCallbackHandler(BaseHandler):
         action = query.data
         
         if action == MenuCallback.REFRESH:
-            await query.edit_message_text(
-                "🎛️ **Главное меню**",
-                reply_markup=get_main_menu_keyboard(self.is_admin(update)),
-                parse_mode=ParseMode.MARKDOWN,
-            )
+            await query.edit_message_text("🎛️ **Главное меню**", reply_markup=get_main_menu_keyboard(self.is_admin(update)))
         elif action == MenuCallback.ADMIN_PANEL:
-            if not self.is_admin(update):
-                await query.answer("⛔ Только для администраторов.", show_alert=True)
-                return
-            await query.edit_message_text(
-                "👑 **Админ-панель**",
-                reply_markup=get_admin_panel_keyboard(self._radio.is_on),
-                parse_mode=ParseMode.MARKDOWN,
-            )
+            if not self.is_admin(update): return
+            await query.edit_message_text("👑 **Админ-панель**", reply_markup=get_admin_panel_keyboard(self._radio.is_on))
         elif action == MenuCallback.PLAY_TRACK:
-            await query.message.reply_text(
-                text="🎧 Пожалуйста, отправьте мне название песни или исполнителя.",
-                reply_markup=ForceReply(selective=True, input_field_placeholder="Название трека...")
-            )
+            await query.message.reply_text(text="🎧 Название трека?", reply_markup=ForceReply(selective=True))
             await query.message.delete()
         elif action == MenuCallback.CHOOSE_MOOD:
-            await query.edit_message_text(
-                "😊 **Выберите настроение для радио:**",
-                reply_markup=get_mood_choice_keyboard(),
-                parse_mode=ParseMode.MARKDOWN,
-            )
-        elif action == MenuCallback.VOTE_FOR_GENRE:
-            if self._radio.is_vote_in_progress:
-                await query.answer("Голосование уже идет!", show_alert=True)
-                # Optionally, resend the voting message
-                # await context.bot.send_message(...)
-            else:
-                next_vote_time = self._radio.mode_end_time
-                if next_vote_time:
-                    minutes_left = round((next_vote_time - datetime.now()).total_seconds() / 60)
-                    await query.answer(f"Следующее голосование начнется через ~{minutes_left} минут.", show_alert=True)
-                else:
-                    await query.answer("Радио выключено. Голосование начнется после запуска радио.", show_alert=True)
+            await query.edit_message_text("😊 **Выберите настроение:**", reply_markup=get_mood_choice_keyboard())
 
 
 class GenreCallbackHandler(BaseHandler):
     async def handle(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         query = update.callback_query
         await query.answer()
-
-        if not self.is_admin(update):
-            await query.answer("⛔ Только для администраторов.", show_alert=True)
-            return
+        if not self.is_admin(update): return
         
         genre = query.data.split(GenreCallback.PREFIX)[1]
-        
         await self._radio.set_admin_genre(genre, update.effective_chat.id)
-        
-        # The message is now sent from within the service, so we just need to go back
-        await query.edit_message_text(
-            "👑 **Админ-панель**",
-            reply_markup=get_admin_panel_keyboard(self._radio.is_on),
-            parse_mode=ParseMode.MARKDOWN,
-        )
+        await query.edit_message_text("👑 **Админ-панель**", reply_markup=get_admin_panel_keyboard(self._radio.is_on))
 
 
 class MoodCallbackHandler(BaseHandler):
     async def handle(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         query = update.callback_query
         await query.answer()
-
         mood = query.data.split(MoodCallback.PREFIX)[1]
         await self._radio.set_mood(mood, update.effective_chat.id)
-
-        # Go back to main menu
-        await query.edit_message_text(
-            "🎛️ **Главное меню**",
-            reply_markup=get_main_menu_keyboard(self.is_admin(update)),
-            parse_mode=ParseMode.MARKDOWN,
-        )
+        await query.edit_message_text("🎛️ **Главное меню**", reply_markup=get_main_menu_keyboard(self.is_admin(update)))
 
 
 class VoteCallbackHandler(BaseHandler):
     async def handle(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         query = update.callback_query
-        
         if not self._radio.is_vote_in_progress:
             await query.answer("⛔ Голосование уже завершено.", show_alert=True)
-            await query.message.delete()
             return
 
         genre = query.data.split(VoteCallback.PREFIX)[1]
@@ -285,17 +234,73 @@ class VoteCallbackHandler(BaseHandler):
         if self._radio.register_vote(genre, user_id):
             await query.answer(f"✅ Ваш голос за '{genre.capitalize()}' принят!")
             await self._radio.update_vote_keyboard()
-        else:
-            await query.answer("Что-то пошло не так.", show_alert=True)
 
 
 class TrackCallbackHandler(BaseHandler):
     async def handle(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         query = update.callback_query
-        action = query.data
+        user_id = query.from_user.id
+        
+        try:
+            _, action, track_id = query.data.split(":")
+        except ValueError:
+            if query.data == f"{TrackCallback.PREFIX}{TrackCallback.DELETE}":
+                await query.message.delete()
+                await query.answer("🗑️ Трек удален.")
+            else:
+                await query.answer("Ошибка: неверный формат колбэка.", show_alert=True)
+            return
 
         if action == TrackCallback.DELETE:
             await query.message.delete()
             await query.answer("🗑️ Трек удален.")
-        else:
-            await query.answer("Эта функция в разработке.", show_alert=True)
+            return
+
+        rating_changed = False
+        if action == TrackCallback.LIKE:
+            new_likes, new_dislikes = await self._cache.update_rating(user_id, track_id, 1)
+            rating_changed = True
+            await query.answer("❤️ Вам понравился трек!")
+        elif action == TrackCallback.DISLIKE:
+            new_likes, new_dislikes = await self._cache.update_rating(user_id, track_id, -1)
+            rating_changed = True
+            await query.answer("💔 Вам не понравился трек.")
+        
+        elif action == TrackCallback.ADD_TO_PLAYLIST:
+            is_in_favs = await self._cache.is_in_favorites(user_id, track_id)
+            track_info = query.message.audio
+            
+            if is_in_favs:
+                await self._cache.remove_from_favorites(user_id, track_id)
+                await query.answer("🗑️ Удалено из избранного.")
+            else:
+                # Нам нужна полная информация о треке, берем ее из сообщения
+                track_info_model = TrackInfo(
+                    identifier=track_id, title=track_info.title, 
+                    artist=track_info.performer, duration=track_info.duration
+                )
+                await self._cache.add_to_favorites(user_id, track_info_model)
+                await query.answer("⭐ Добавлено в избранное!")
+            
+            # Обновляем клавиатуру, чтобы показать новый статус кнопки
+            new_is_in_favs = not is_in_favs
+            new_keyboard = get_track_control_keyboard(track_id, new_is_in_favs)
+            try:
+                await query.edit_message_reply_markup(reply_markup=new_keyboard)
+            except BadRequest as e:
+                if "message is not modified" not in str(e): logger.warning(e)
+            return
+
+        if rating_changed:
+            # Обновляем caption, чтобы показать новый счетчик
+            base_caption = "\n".join(query.message.caption.split("\n\n")[:-1])
+            new_caption = (
+                f"{base_caption}\n\n"
+                f"❤️ {new_likes}  💔 {new_dislikes}"
+            )
+            try:
+                await query.edit_message_caption(caption=new_caption, parse_mode=ParseMode.MARKDOWN)
+            except BadRequest as e:
+                if "message is not modified" not in str(e): logger.warning(e)
+
+        await query.answer()
