@@ -44,7 +44,7 @@ class Settings(BaseSettings):
     # --- Настройки радио ---
     RADIO_SOURCE: str = "youtube"
     RADIO_COOLDOWN_S: int = 120
-    RADIO_MAX_DURATION_S: int = 1200  # 20 минут
+    RADIO_MAX_DURATION_S: int = 600   # 10 минут
     RADIO_MIN_DURATION_S: int = 60    # 1 минута
     RADIO_MIN_VIEWS: Optional[int] = 10000
     RADIO_MIN_LIKES: Optional[int] = 500

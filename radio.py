@@ -349,7 +349,7 @@ class RadioService:
         
         new_tracks = await self._downloader.search(
             query, 
-            limit=50,
+            limit=100,
             min_duration=self._settings.RADIO_MIN_DURATION_S,
             max_duration=self._settings.RADIO_MAX_DURATION_S,
             min_views=self._settings.RADIO_MIN_VIEWS,
@@ -359,7 +359,7 @@ class RadioService:
         if not new_tracks and (self._settings.RADIO_MIN_VIEWS or self._settings.RADIO_MIN_LIKES):
             logger.warning(f"[Радио] Поиск '{query}' с фильтрами не дал результатов. Пробую без них.")
             new_tracks = await self._downloader.search(
-                query, limit=50, 
+                query, limit=100, 
                 min_duration=self._settings.RADIO_MIN_DURATION_S,
                 max_duration=self._settings.RADIO_MAX_DURATION_S
             )
@@ -409,7 +409,8 @@ class RadioService:
                     await asyncio.sleep(self._settings.RETRY_DELAY_S)
                     continue
                 
-                track_to_play = self._playlist.pop(0)
+                track_to_play_index = random.randint(0, len(self._playlist) - 1)
+                track_to_play = self._playlist.pop(track_to_play_index)
                 if track_to_play.identifier in self._played_ids:
                     continue 
                 

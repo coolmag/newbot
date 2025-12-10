@@ -80,7 +80,11 @@ class YouTubeDownloader(BaseDownloader):
         self._ydl_opts_download = self._get_ydl_options(is_search=False)
 
     def _get_ydl_options(
-        self, is_search: bool, match_filter: Optional[str] = None
+        self, 
+        is_search: bool, 
+        match_filter: Optional[str] = None,
+        min_duration: Optional[int] = None,
+        max_duration: Optional[int] = None,
     ) -> Dict[str, Any]:
         options = {
             "quiet": True,
@@ -94,8 +98,17 @@ class YouTubeDownloader(BaseDownloader):
         }
         if is_search:
             options["extract_flat"] = True
+            filters = []
             if match_filter:
-                options["match_filter"] = yt_dlp.utils.match_filter_func(match_filter)
+                filters.append(match_filter)
+            if min_duration is not None:
+                filters.append(f"duration >= {min_duration}")
+            if max_duration is not None:
+                filters.append(f"duration <= {max_duration}")
+            
+            if filters:
+                combined_filter = " & ".join(filters)
+                options["match_filter"] = yt_dlp.utils.match_filter_func(combined_filter)
         else:
             options["format"] = "bestaudio/best"
             options["max_filesize"] = self._settings.MAX_FILE_SIZE_MB * 1024 * 1024
@@ -134,7 +147,7 @@ class YouTubeDownloader(BaseDownloader):
         # Ищем 'audio' или 'lyric' в названии ИЛИ канал должен быть 'Topic'
         # Также отсеиваем короткие видео (shorts) и живые выступления (live)
         quality_filter = (
-            "duration > 60 & ("
+            "("
             "    (title?~='audio|lyric') |"
             "    (channel?~=' - Topic$')"
             ") & "
@@ -143,7 +156,12 @@ class YouTubeDownloader(BaseDownloader):
 
         # 3. Попытка №1: Строгий поиск с фильтром
         logger.debug(f"[SmartSearch] Попытка 1: строгий поиск с запросом '{smart_query}'")
-        ydl_opts_strict = self._get_ydl_options(is_search=True, match_filter=quality_filter)
+        ydl_opts_strict = self._get_ydl_options(
+            is_search=True, 
+            match_filter=quality_filter,
+            min_duration=self._settings.RADIO_MIN_DURATION_S,
+            max_duration=self._settings.RADIO_MAX_DURATION_S,
+        )
         
         try:
             info = await self._extract_info(f"ytsearch5:{smart_query}", ydl_opts_strict)
@@ -162,7 +180,11 @@ class YouTubeDownloader(BaseDownloader):
 
         # 4. Попытка №2: Фоллбэк на обычный поиск, если строгий не дал результатов
         logger.info("[SmartSearch] Строгий поиск не дал результатов, перехожу к обычному поиску.")
-        ydl_opts_fallback = self._get_ydl_options(is_search=True)
+        ydl_opts_fallback = self._get_ydl_options(
+            is_search=True,
+            min_duration=self._settings.RADIO_MIN_DURATION_S,
+            max_duration=self._settings.RADIO_MAX_DURATION_S,
+        )
         try:
             info = await self._extract_info(f"ytsearch1:{query}", ydl_opts_fallback)
             if info and info.get("entries"):
@@ -251,10 +273,15 @@ class YouTubeDownloader(BaseDownloader):
         min_likes: Optional[int] = None,
         min_like_ratio: Optional[float] = None,
         # Мягкий фильтр для радио, чтобы предпочитать муз. контент
-        match_filter: str = "duration > 60"
+        match_filter: Optional[str] = None
     ) -> List[TrackInfo]:
         search_query = f"ytsearch{limit}:{query}"
-        ydl_opts = self._get_ydl_options(is_search=True, match_filter=match_filter)
+        ydl_opts = self._get_ydl_options(
+            is_search=True, 
+            match_filter=match_filter,
+            min_duration=min_duration,
+            max_duration=max_duration,
+        )
         
         try:
             info = await self._extract_info(search_query, ydl_opts)
