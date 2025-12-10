@@ -110,9 +110,9 @@ async def main() -> None:
         cache_service = container.resolve(CacheService)
         await cache_service.initialize()
 
+        await app.start()
         logger.info("✅ Бот запущен и готов к работе.")
-        await app.updater.start_polling()
-        await asyncio.Event().wait()
+        await app.run_until_idle() # Это блокирует выполнение до остановки вручную или сигналом
 
     except (KeyboardInterrupt, SystemExit):
         logger.info("👋 Получен сигнал остановки...")
@@ -120,9 +120,6 @@ async def main() -> None:
         logger.critical(f"❌ Критическая ошибка при запуске бота: {e}", exc_info=True)
     finally:
         logger.info("🛑 Останавливаю сервисы...")
-        if app.updater and app.updater.running:
-            await app.updater.stop()
-
         radio_service = container.resolve(RadioService)
         if radio_service.is_on:
             await radio_service.stop()
@@ -130,7 +127,7 @@ async def main() -> None:
         cache_service = container.resolve(CacheService)
         await cache_service.close()
         
-        await app.shutdown()
+        await app.stop() # Явно останавливаем Application, чтобы корректно завершить все внутренние процессы
         
         logger.info("👋 Бот остановлен.")
 
