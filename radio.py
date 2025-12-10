@@ -383,7 +383,7 @@ class RadioService:
                 await self._bot.send_audio(
                     chat_id=chat_id, audio=audio_file, title=result.track_info.title,
                     performer=result.track_info.artist, duration=result.track_info.duration,
-                    reply_markup=get_track_control_keyboard(),
+                    reply_markup=get_track_control_keyboard(result.track_info.identifier),
                 )
         except TelegramError as e:
             logger.error(f"Ошибка Telegram при отправке радио-аудио: {e}")

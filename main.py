@@ -109,10 +109,8 @@ async def main() -> None:
             cache_service = container.resolve(CacheService)
             await cache_service.initialize()
 
-            await app.start()
-            await app.updater.start_polling(drop_pending_updates=True)
             logger.info("✅ Бот запущен и готов к работе.")
-            await asyncio.Event().wait()
+            await app.run_polling(drop_pending_updates=True)
 
         except (KeyboardInterrupt, SystemExit):
             logger.info("👋 Получен сигнал остановки...")

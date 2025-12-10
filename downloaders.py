@@ -148,10 +148,10 @@ class YouTubeDownloader(BaseDownloader):
         # Также отсеиваем короткие видео (shorts) и живые выступления (live)
         quality_filter = (
             "("
-            "    (title?~='audio|lyric') |"
+            "    (title?~='audio|lyric|альбом|album') |"
             "    (channel?~=' - Topic$')"
             ") & "
-            "!title?~='live|short|концерт|выступление'"
+            "!title?~='live|short|концерт|выступление|official video|music video|full show|interview|parody|влог|vlog|топ 10|top 10|top 25|greatest moments'"
         )
 
         # 3. Попытка №1: Строгий поиск с фильтром
