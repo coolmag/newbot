@@ -86,7 +86,6 @@ def main() -> None:
     # --- Регистрация обработчиков ---
     app.add_handler(CommandHandler(["start", "help", "menu", "m"], container.resolve(StartHandler).handle))
     app.add_handler(CommandHandler(["play", "p"], container.resolve(PlayHandler).handle))
-    app.add_handler(MessageHandler(filters.REPLY, container.resolve(PlayHandler).handle))
     app.add_handler(CommandHandler(["dedicate", "d"], container.resolve(DedicateHandler).handle))
     app.add_handler(CommandHandler(["artist", "art"], container.resolve(ArtistCommandHandler).handle))
     app.add_handler(CommandHandler(["admin", "a"], container.resolve(AdminPanelHandler).handle))
