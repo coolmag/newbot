@@ -112,7 +112,7 @@ async def main() -> None:
 
         logger.info("✅ Бот запущен и готов к работе.")
         await app.updater.start_polling(drop_pending_updates=True)
-        await asyncio.Event().wait()
+        await app.idle()
 
     except (KeyboardInterrupt, SystemExit):
         logger.info("👋 Получен сигнал остановки...")
