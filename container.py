@@ -4,13 +4,13 @@ from telegram import Bot
 from handlers import (
     AdminCallbackHandler,
     AdminPanelHandler,
+    ArtistReplyHandler,
     MenuHandler,
     MenuCallbackHandler,
     PlayHandler,
     StartHandler,
     TrackCallbackHandler,
     GenreCallbackHandler,
-    ArtistCommandHandler,
     VoteCallbackHandler,
     DedicateHandler,
     MoodCallbackHandler,
@@ -51,7 +51,7 @@ def create_container(bot: Bot) -> punq.Container:
     container.register(PlaylistHandler)
     container.register(PinHelpMessageHandler)
     container.register(MenuHandler)
-    container.register(ArtistCommandHandler)
+    container.register(ArtistReplyHandler)
     container.register(AdminPanelHandler)
     container.register(AdminCallbackHandler)
     container.register(MenuCallbackHandler)
