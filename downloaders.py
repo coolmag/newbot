@@ -98,8 +98,15 @@ class YouTubeDownloader(BaseDownloader):
             options["extract_flat"] = True
             
             # Базовый фильтр для исключения AI-контента и прочего нежелательного
-            base_filter = r"!title?~='\bAI\b|AI.cover|Suno|Udio|AI.version|AI.generated|ИИ.кавер|сгенерировано.ИИ|караоке|karaoke'"
-            
+            BANNED_WORDS = [
+                'AI', 'AI.cover', 'Suno', 'Udio', 'AI.version', 'AI.generated',
+                'ИИ.кавер', 'сгенерировано.ИИ', 'караоке', 'karaoke'
+            ]
+            # Формируем regex, который ищет любое из этих слов как отдельные слова
+            # (используя \b - границы слова)
+            banned_regex = '|'.join(fr'\b{re.escape(word)}\b' for word in BANNED_WORDS)
+            base_filter = f"title !~= '{banned_regex}'"
+
             filters = [base_filter]
             if match_filter:
                 filters.append(match_filter)
