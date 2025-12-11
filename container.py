@@ -15,6 +15,7 @@ from handlers import (
     DedicateHandler,
     MoodCallbackHandler,
     PlaylistHandler,
+    PinHelpMessageHandler,
 )
 from config import Settings, get_settings
 from cache_service import CacheService
@@ -48,6 +49,7 @@ def create_container(bot: Bot) -> punq.Container:
     container.register(PlayHandler)
     container.register(DedicateHandler)
     container.register(PlaylistHandler)
+    container.register(PinHelpMessageHandler)
     container.register(MenuHandler)
     container.register(ArtistCommandHandler)
     container.register(AdminPanelHandler)
