@@ -109,8 +109,7 @@ class YouTubeDownloader(BaseDownloader):
                 filters.append(f"duration <= {max_duration}")
             
             if filters:
-                # Оборачиваем каждый фильтр в скобки для надежности
-                combined_filter = " & ".join(f"({f})" for f in filters)
+                combined_filter = " & ".join(filters)
                 options["match_filter"] = yt_dlp.utils.match_filter_func(combined_filter)
         else:
             options["format"] = "bestaudio/best"
