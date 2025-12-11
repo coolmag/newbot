@@ -98,7 +98,7 @@ class YouTubeDownloader(BaseDownloader):
             options["extract_flat"] = True
             
             # Базовый фильтр для исключения AI-контента и прочего нежелательного
-            base_filter = '!title?~="\\bAI\\b|AI cover|Suno|Udio|AI version|AI generated|ИИ кавер|сгенерировано ИИ|караоке|karaoke"'
+            base_filter = r"!title?~='\bAI\b|AI.cover|Suno|Udio|AI.version|AI.generated|ИИ.кавер|сгенерировано.ИИ|караоке|karaoke'"
             
             filters = [base_filter]
             if match_filter:
