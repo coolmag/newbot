@@ -72,6 +72,17 @@ class CacheService:
                             )
                             """
                         )
+                        
+                        # Таблица для закрепленных сообщений бота
+                        await db.execute(
+                            """
+                            CREATE TABLE IF NOT EXISTS pinned_messages (
+                                chat_id INTEGER PRIMARY KEY,
+                                message_id INTEGER NOT NULL,
+                                message_type TEXT NOT NULL
+                            )
+                            """
+                        )
                         await db.commit()
 
                     self._is_initialized = True
@@ -229,6 +240,36 @@ class CacheService:
         except Exception as e:
             logger.error(f"Ошибка при проверке избранного для user_id {user_id}: {e}", exc_info=True)
             return False
+            
+    # --- Методы для закрепленных сообщений ---
+    async def set_pinned_help_message_info(self, chat_id: int, message_id: int):
+        """Сохраняет ID закрепленного сообщения справки для чата."""
+        try:
+            async with aiosqlite.connect(self._db_path) as db:
+                await db.execute(
+                    "INSERT OR REPLACE INTO pinned_messages (chat_id, message_id, message_type) VALUES (?, ?, ?)",
+                    (chat_id, message_id, 'help')
+                )
+                await db.commit()
+        except Exception as e:
+            logger.error(f"Ошибка при сохранении информации о закрепленном сообщении: {e}", exc_info=True)
+
+    async def get_pinned_help_message_info(self, chat_id: int) -> Optional[dict]:
+        """Возвращает информацию о закрепленном сообщении справки для чата."""
+        try:
+            async with aiosqlite.connect(self._db_path) as db:
+                db.row_factory = aiosqlite.Row
+                cursor = await db.execute(
+                    "SELECT message_id FROM pinned_messages WHERE chat_id = ? AND message_type = ?",
+                    (chat_id, 'help')
+                )
+                row = await cursor.fetchone()
+                if row:
+                    return {"message_id": row["message_id"]}
+                return None
+        except Exception as e:
+            logger.error(f"Ошибка при получении информации о закрепленном сообщении: {e}", exc_info=True)
+            return None
 
     # --- Фоновые задачи ---
 

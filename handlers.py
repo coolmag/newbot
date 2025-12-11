@@ -247,7 +247,59 @@ class VoteCallbackHandler(BaseHandler):
         
         if self._radio.register_vote(genre, user_id):
             await query.answer(f"✅ Ваш голос за '{genre.capitalize()}' принят!")
-            await self._radio.update_vote_keyboard()
+        await query.answer()
+
+
+class PinHelpMessageHandler(BaseHandler):
+    def __init__(self, settings: Settings, cache_service: "CacheService" = None):
+        super().__init__(settings, cache_service=cache_service)
+
+    async def _get_help_message_text(self) -> str:
+        bot_description = (
+            "**Groove AI Bot** — это музыкальный Telegram-бот для прослушивания музыки в групповых чатах. "
+            "Его цель — автоматизировать музыкальное сопровождение, позволяя пользователям заказывать треки "
+            "и поддерживая постоянное воспроизведение в режиме 'радио'."
+        )
+
+        user_commands = [
+            "/start, /menu, /m — Открыть главное меню бота.",
+            "/play <название трека>, /p <название трека> — Найти трек на YouTube, скачать и отправить его как аудио.",
+            "/playlist, /pl — Показать ваши избранные треки.",
+            "/dedicate <@пользователь> <название трека>, /d <@пользователь> <название трека> — Посвятить трек другому пользователю.",
+            "/help — Показать это сообщение."
+        ]
+        
+        return (
+            f"{bot_description}\n\n"
+            f"**Доступные команды:**\n"
+            + "\n".join(user_commands)
+        )
+
+    async def handle(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if not self.is_admin(update):
+            await update.message.reply_text("⛔ Только для администраторов.")
+            return
+
+        chat_id = update.effective_chat.id
+        
+        # Попытка открепить предыдущее сообщение справки
+        pinned_message_info = await self._cache.get_pinned_help_message_info(chat_id)
+        if pinned_message_info:
+            try:
+                await context.bot.unpin_chat_message(chat_id, pinned_message_info["message_id"])
+            except Exception as e:
+                logger.warning(f"Не удалось открепить предыдущее сообщение справки: {e}")
+
+        help_text = await self._get_help_message_text()
+        sent_message = await update.message.reply_text(help_text, parse_mode=ParseMode.MARKDOWN)
+        
+        try:
+            await context.bot.pin_chat_message(chat_id, sent_message.message_id, disable_notification=True)
+            await self._cache.set_pinned_help_message_info(chat_id, sent_message.message_id)
+            await sent_message.reply_text("✅ Сообщение со справкой закреплено!")
+        except Exception as e:
+            logger.error(f"Ошибка при закреплении сообщения справки: {e}")
+            await update.message.reply_text("❌ Не удалось закрепить сообщение со справкой.")
 
 
 class TrackCallbackHandler(BaseHandler):

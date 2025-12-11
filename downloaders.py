@@ -76,8 +76,6 @@ class YouTubeDownloader(BaseDownloader):
 
     def __init__(self, settings: Settings, cache_service: CacheService):
         super().__init__(settings, cache_service)
-        # Опции для скачивания остаются прежними
-        self._ydl_opts_download = self._get_ydl_options(is_search=False)
 
     def _get_ydl_options(
         self, 
@@ -98,7 +96,11 @@ class YouTubeDownloader(BaseDownloader):
         }
         if is_search:
             options["extract_flat"] = True
-            filters = []
+            
+            # Базовый фильтр для исключения AI-контента и прочего нежелательного
+            base_filter = "!title?~='\\bAI\\b|AI cover|Suno|Udio|AI version|AI generated|ИИ кавер|сгенерировано ИИ|караоке|karaoke'"
+            
+            filters = [base_filter]
             if match_filter:
                 filters.append(match_filter)
             if min_duration is not None:
@@ -107,11 +109,11 @@ class YouTubeDownloader(BaseDownloader):
                 filters.append(f"duration <= {max_duration}")
             
             if filters:
-                combined_filter = " & ".join(filters)
+                # Оборачиваем каждый фильтр в скобки для надежности
+                combined_filter = " & ".join(f"({f})" for f in filters)
                 options["match_filter"] = yt_dlp.utils.match_filter_func(combined_filter)
         else:
             options["format"] = "bestaudio/best"
-            options["max_filesize"] = self._settings.MAX_FILE_SIZE_MB * 1024 * 1024
             options["postprocessors"] = [
                 {"key": "FFmpegExtractAudio", "preferredcodec": "mp3"}
             ]
@@ -126,7 +128,12 @@ class YouTubeDownloader(BaseDownloader):
             None, lambda: yt_dlp.YoutubeDL(ydl_opts).extract_info(query, download=False)
         )
 
-    async def _find_best_match(self, query: str) -> Optional[TrackInfo]:
+    async def _find_best_match(
+        self, 
+        query: str, 
+        min_duration: Optional[int] = None, 
+        max_duration: Optional[int] = None
+    ) -> Optional[TrackInfo]:
         """
         Интеллектуальный поиск лучшего трека.
         Сначала ищет "высококачественные" совпадения (official audio, topic),
@@ -134,18 +141,13 @@ class YouTubeDownloader(BaseDownloader):
         """
         logger.info(f"[SmartSearch] Начинаю интеллектуальный поиск для: '{query}'")
         
-        # 1. Формируем улучшенный поисковый запрос
         search_query_parts = [query]
         if "советск" in query.lower() or "ссср" in query.lower():
             search_query_parts.extend(["гостелерадиофонд", "эстрада", "песня года"])
         else:
             search_query_parts.extend(["official audio", "topic", "lyrics", "альбом"])
-        
         smart_query = " ".join(search_query_parts)
 
-        # 2. Определяем строгий фильтр для поиска качественного аудио
-        # Ищем 'audio' или 'lyric' в названии ИЛИ канал должен быть 'Topic'
-        # Также отсеиваем короткие видео (shorts) и живые выступления (live)
         quality_filter = (
             "("
             "    (title?~='audio|lyric|альбом|album') |"
@@ -154,19 +156,17 @@ class YouTubeDownloader(BaseDownloader):
             "!title?~='live|short|концерт|выступление|official video|music video|full show|interview|parody|влог|vlog|топ 10|top 10|top 25|greatest moments|playlist|mix|сборник|best of'"
         )
 
-        # 3. Попытка №1: Строгий поиск с фильтром
         logger.debug(f"[SmartSearch] Попытка 1: строгий поиск с запросом '{smart_query}'")
         ydl_opts_strict = self._get_ydl_options(
             is_search=True, 
             match_filter=quality_filter,
-            min_duration=self._settings.RADIO_MIN_DURATION_S,
-            max_duration=self._settings.RADIO_MAX_DURATION_S,
+            min_duration=min_duration,
+            max_duration=max_duration,
         )
         
         try:
             info = await self._extract_info(f"ytsearch5:{smart_query}", ydl_opts_strict)
             if info and info.get("entries"):
-                # Ищем первое видео с категорией "Музыка"
                 for entry in info["entries"]:
                     categories = entry.get("categories", [])
                     if isinstance(categories, list) and "Music" in categories:
@@ -179,7 +179,6 @@ class YouTubeDownloader(BaseDownloader):
                             identifier=entry["id"],
                         )
                 
-                # Если музыкальных треков не найдено, берем первый результат, как раньше
                 best_entry = info["entries"][0]
                 logger.info(f"[SmartSearch] Музыкальных треков не найдено, беру первый результат: {best_entry['title']}")
                 return TrackInfo(
@@ -192,17 +191,15 @@ class YouTubeDownloader(BaseDownloader):
         except Exception as e:
             logger.warning(f"[SmartSearch] Ошибка на этапе строгого поиска: {e}")
 
-        # 4. Попытка №2: Фоллбэк на обычный поиск, если строгий не дал результатов
         logger.info("[SmartSearch] Строгий поиск не дал результатов, перехожу к обычному поиску.")
         ydl_opts_fallback = self._get_ydl_options(
             is_search=True,
-            min_duration=self._settings.RADIO_MIN_DURATION_S,
-            max_duration=self._settings.RADIO_MAX_DURATION_S,
+            min_duration=min_duration,
+            max_duration=max_duration,
         )
         try:
             info = await self._extract_info(f"ytsearch1:{query}", ydl_opts_fallback)
             if info and info.get("entries"):
-                # Ищем первое видео с категорией "Музыка"
                 for entry in info["entries"]:
                     categories = entry.get("categories", [])
                     if isinstance(categories, list) and "Music" in categories:
@@ -215,7 +212,6 @@ class YouTubeDownloader(BaseDownloader):
                             identifier=entry["id"],
                         )
 
-                # Если музыкальных треков не найдено, берем первый результат, как раньше
                 best_entry = info["entries"][0]
                 logger.info(f"[SmartSearch] Музыкальных треков не найдено (обычный поиск), беру первый результат: {best_entry['title']}")
                 return TrackInfo(
@@ -235,46 +231,46 @@ class YouTubeDownloader(BaseDownloader):
     async def download(self, query_or_id: str) -> DownloadResult:
         is_id = re.match(r"^[a-zA-Z0-9_-]{11}$", query_or_id) is not None
         
-        if is_id:
-            # Если это ID, кешируем по ID и скачиваем напрямую
-            cache_key = query_or_id
-            track_identifier = query_or_id
-            track_info_for_dl = None
-        else:
-            # Если это поисковый запрос, кешируем по запросу
-            cache_key = f"search:{query_or_id}"
-        
+        cache_key = query_or_id if is_id else f"search:{query_or_id}"
         cached = await self._cache.get(cache_key, Source.YOUTUBE)
         if cached:
             return cached
 
         try:
-            # --- Логика поиска вынесена ---
-            if not is_id:
-                track_info_for_dl = await self._find_best_match(query_or_id)
+            if is_id:
+                track_identifier = query_or_id
+            else:
+                track_info_for_dl = await self._find_best_match(
+                    query_or_id,
+                    min_duration=self._settings.PLAY_MIN_DURATION_S,
+                    max_duration=self._settings.PLAY_MAX_DURATION_S
+                )
                 if not track_info_for_dl:
                     return DownloadResult(success=False, error="Ничего не найдено.")
                 track_identifier = track_info_for_dl.identifier
+
+            ydl_opts_download = self._get_ydl_options(is_search=False)
+            ydl_opts_download["max_filesize"] = self._settings.PLAY_MAX_FILE_SIZE_MB * 1024 * 1024
+
+            info = await self._extract_info(track_identifier, ydl_opts_download)
             
-            # --- Логика скачивания ---
-            # Если скачивали по ID, нужно получить метаданные
-            if is_id:
-                info = await self._extract_info(track_identifier, self._ydl_opts_download)
-                video_info = info
-                track_info_for_dl = TrackInfo(
-                    title=video_info.get("title", "Unknown"),
-                    artist=video_info.get("channel", video_info.get("uploader", "Unknown")),
-                    duration=int(video_info.get("duration", 0)),
-                    source=Source.YOUTUBE.value,
-                    identifier=video_info["id"],
-                )
-            else: # Метаданные уже есть из поиска
-                 video_info = await self._extract_info(track_identifier, self._ydl_opts_download)
+            track_info = TrackInfo(
+                title=info.get("title", "Unknown"),
+                artist=info.get("channel", info.get("uploader", "Unknown")),
+                duration=int(info.get("duration", 0)),
+                source=Source.YOUTUBE.value,
+                identifier=info["id"],
+            )
+
+            if track_info.duration > self._settings.PLAY_MAX_DURATION_S:
+                err_msg = f"Найденный трек слишком длинный ({track_info.format_duration()})."
+                logger.warning(err_msg)
+                return DownloadResult(success=False, error=err_msg)
 
             loop = asyncio.get_running_loop()
             await loop.run_in_executor(
                 None,
-                lambda: yt_dlp.YoutubeDL(self._ydl_opts_download).download([track_identifier]),
+                lambda: yt_dlp.YoutubeDL(ydl_opts_download).download([track_identifier]),
             )
 
             mp3_file = next(
@@ -284,11 +280,14 @@ class YouTubeDownloader(BaseDownloader):
             if not mp3_file:
                 return DownloadResult(success=False, error="Файл не найден после скачивания.")
 
-            result = DownloadResult(True, mp3_file, track_info_for_dl)
+            result = DownloadResult(True, mp3_file, track_info)
             await self._cache.set(cache_key, Source.YOUTUBE, result)
             return result
         except Exception as e:
             logger.error(f"Ошибка скачивания с YouTube: {e}", exc_info=True)
+            # Проверяем, не было ли это ошибкой размера файла
+            if "File is larger than max-filesize" in str(e):
+                return DownloadResult(success=False, error=f"Файл слишком большой ( > {self._settings.PLAY_MAX_FILE_SIZE_MB}MB).")
             return DownloadResult(success=False, error=str(e))
 
     async def search(

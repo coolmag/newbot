@@ -34,8 +34,12 @@ class Settings(BaseSettings):
 
     # --- Настройки загрузчика ---
     MAX_QUERY_LENGTH: int = 150
-    MAX_FILE_SIZE_MB: int = 49
     DOWNLOAD_TIMEOUT_S: int = 120
+    
+    # --- Настройки для команды /play ---
+    PLAY_MAX_DURATION_S: int = 720    # 12 минут
+    PLAY_MIN_DURATION_S: int = 15     # 15 секунд
+    PLAY_MAX_FILE_SIZE_MB: int = 45
 
     # --- Настройки повторных попыток ---
     MAX_RETRIES: int = 5
@@ -75,7 +79,7 @@ class Settings(BaseSettings):
         "breakbeat", "hardstyle", "phonk", "future bass", "ambient house", "trip-hop",
 
         # --- DJ-сеты и ремиксы ---
-        "extended mix", "kraken music", "craken remix", "club mix", "dj set",
+        "extended mix", "club mix", "dj set",
         "hardwell", "armin van buuren", "tiesto", "david guetta", "daft punk",
         
         # --- Хип-хоп / Рэп ---
