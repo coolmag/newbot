@@ -33,6 +33,7 @@ def get_admin_panel_keyboard(is_radio_on: bool) -> InlineKeyboardMarkup:
     keyboard = [
         [radio_button, InlineKeyboardButton("🎶 Сменить жанр", callback_data=AdminCallback.CHANGE_GENRE)],
         [InlineKeyboardButton("⏭️ Следующий трек", callback_data=AdminCallback.RADIO_SKIP)],
+        [InlineKeyboardButton("🎤 Режим артиста", callback_data=AdminCallback.ARTIST_MODE)],
         # Исправлено: кнопка "назад" теперь использует MenuCallback.REFRESH для возврата в главное меню
         [InlineKeyboardButton("↩️ Назад в меню", callback_data=MenuCallback.REFRESH)],
     ]

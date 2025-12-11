@@ -165,19 +165,28 @@ class AdminPanelHandler(BaseHandler):
         )
 
 
-class ArtistCommandHandler(BaseHandler):
+class ArtistReplyHandler(BaseHandler):
+    """
+    Обрабатывает ответ админа с именем артиста после нажатия
+    кнопки "Режим артиста".
+    """
     async def handle(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        if not self.is_admin(update):
-            await update.message.reply_text("⛔ Только для администраторов.")
+        # Проверяем, что это админ и что это ответ на наше сообщение
+        if not self.is_admin(update) or not update.message.reply_to_message:
             return
-        
-        artist = " ".join(context.args)
+            
+        if "Отправьте мне имя исполнителя" not in update.message.reply_to_message.text:
+            return
+
+        artist = update.message.text
         if not artist:
-            await update.message.reply_text("⚠️ Укажите имя артиста. `/artist <имя>`")
+            await update.message.reply_text("⚠️ Имя артиста не может быть пустым.")
             return
         
         await self._radio.set_artist_mode(artist, update.effective_chat.id)
         await update.message.reply_text(f"✅ Включаю режим артиста: **{artist}**", parse_mode=ParseMode.MARKDOWN)
+        # Удаляем исходное сообщение с ForceReply, чтобы не мусорить в чате
+        await update.message.reply_to_message.delete()
 
 
 class AdminCallbackHandler(BaseHandler):
@@ -192,6 +201,15 @@ class AdminCallbackHandler(BaseHandler):
         elif action == AdminCallback.RADIO_SKIP: await self._radio.skip()
         elif action == AdminCallback.CHANGE_GENRE:
             await query.edit_message_text("🎶 **Выберите жанр для радио:**", reply_markup=get_genre_choice_keyboard())
+            return
+        elif action == AdminCallback.ARTIST_MODE:
+            await query.message.reply_text(
+                "🎤 **Режим артиста**\n\nОтправьте мне имя исполнителя. Радио будет играть только его треки.",
+                reply_markup=ForceReply(selective=True, input_field_placeholder="Например: Linkin Park"),
+                parse_mode=ParseMode.MARKDOWN
+            )
+            # Удаляем сообщение с клавиатурой, чтобы избежать путаницы
+            await query.message.delete()
             return
         
         await query.edit_message_text("👑 **Админ-панель**", reply_markup=get_admin_panel_keyboard(self._radio.is_on))

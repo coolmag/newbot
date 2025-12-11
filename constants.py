@@ -17,6 +17,7 @@ class AdminCallback(str, Enum):
     RADIO_OFF = "admin:radio_off"
     RADIO_SKIP = "admin:radio_skip"
     CHANGE_GENRE = "admin:change_genre"
+    ARTIST_MODE = "admin:artist_mode"
 
 
 class GenreCallback:

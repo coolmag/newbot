@@ -7,18 +7,18 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Mess
 from handlers import (
     AdminCallbackHandler,
     AdminPanelHandler,
+    ArtistReplyHandler,
     MenuHandler,
     MenuCallbackHandler,
     PlayHandler,
     StartHandler,
     TrackCallbackHandler,
     GenreCallbackHandler,
-    ArtistCommandHandler,
     VoteCallbackHandler,
     DedicateHandler,
     MoodCallbackHandler,
     PlaylistHandler,
-    PinHelpMessageHandler, # <-- Added this
+    PinHelpMessageHandler,
 )
 from config import Settings, get_settings
 from constants import VoteCallback, GenreCallback, MoodCallback
@@ -52,10 +52,8 @@ async def set_bot_commands(app: Application, settings: Settings):
 
     # Команды для админов (включают команды по умолчанию)
     admin_commands = default_commands + [
-        BotCommand("artist", "🎤 Включить радио по артисту"),
-        BotCommand("a", "🎤 Включить радио по артисту"),
         BotCommand("admin", "👑 Открыть панель администратора"),
-        BotCommand("pin_help", "📌 Закрепить сообщение со справкой"), # <-- Added this
+        BotCommand("pin_help", "📌 Закрепить сообщение со справкой"),
     ]
     
     # Устанавливаем расширенные команды для каждого админа персонально
@@ -88,10 +86,13 @@ def main() -> None:
     app.add_handler(CommandHandler(["start", "help", "menu", "m"], container.resolve(StartHandler).handle))
     app.add_handler(CommandHandler(["play", "p"], container.resolve(PlayHandler).handle))
     app.add_handler(CommandHandler(["dedicate", "d"], container.resolve(DedicateHandler).handle))
-    app.add_handler(CommandHandler(["artist", "a"], container.resolve(ArtistCommandHandler).handle))
     app.add_handler(CommandHandler(["admin"], container.resolve(AdminPanelHandler).handle))
-    app.add_handler(CommandHandler(["pin_help"], container.resolve(PinHelpMessageHandler).handle)) # <-- Added this
+    app.add_handler(CommandHandler(["pin_help"], container.resolve(PinHelpMessageHandler).handle))
     app.add_handler(CommandHandler(["playlist", "pl"], container.resolve(PlaylistHandler).handle))
+    
+    # Обработчик для ответов на сообщения (для режима артиста)
+    app.add_handler(MessageHandler(filters.REPLY, container.resolve(ArtistReplyHandler).handle))
+
     app.add_handler(CallbackQueryHandler(container.resolve(AdminCallbackHandler).handle, pattern="^admin:.*"))
     app.add_handler(CallbackQueryHandler(container.resolve(MenuCallbackHandler).handle, pattern="^menu:.*"))
     app.add_handler(CallbackQueryHandler(container.resolve(TrackCallbackHandler).handle, pattern="^track:.*"))
