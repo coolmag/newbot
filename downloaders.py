@@ -102,15 +102,10 @@ class YouTubeDownloader(BaseDownloader):
                 'AI', 'AI.cover', 'Suno', 'Udio', 'AI.version', 'AI.generated',
                 'ИИ.кавер', 'сгенерировано.ИИ', 'караоке', 'karaoke'
             ]
-            # Формируем regex, который ищет любое из этих слов как отдельные слова
-            # (используя \b - границы слова)
-            # Формируем regex, который ищет любое из этих слов как отдельные слова.
-            # Используем raw-string и одинарные кавычки для надежности.
-            # Пробелы в словах заменяем на точку, чтобы фильтр yt-dlp их "съел".
-            banned_regex = '|'.join(
-                fr'\b{re.escape(word.replace(" ", "."))}\b' for word in BANNED_WORDS
-            )
-            base_filter = f"title !~? '{banned_regex}'" # !~? - case-insensitive
+            banned_regex = '|'.join(re.escape(word) for word in BANNED_WORDS)
+            # Фильтр для yt-dlp. Оператор !~? делает его нечувствительным к регистру.
+            # Оборачиваем в кавычки, чтобы обработать возможные спецсимволы.
+            base_filter = f'title !~? "({banned_regex})"'
 
             filters = [base_filter]
             if match_filter:
