@@ -131,9 +131,7 @@ class YouTubeDownloader(BaseDownloader):
         max_duration: Optional[int] = None
     ) -> Optional[TrackInfo]:
         """
-        Интеллектуальный поиск лучшего трека.
-        Сначала ищет "высококачественные" совпадения (official audio, topic),
-        затем, если ничего не найдено, выполняет обычный поиск.
+        Интеллектуальный поиск лучшего трека с фильтрацией в Python.
         """
         logger.info(f"[SmartSearch] Начинаю интеллектуальный поиск для: '{query}'")
         
@@ -144,18 +142,30 @@ class YouTubeDownloader(BaseDownloader):
             search_query_parts.extend(["official audio", "topic", "lyrics", "альбом"])
         smart_query = " ".join(search_query_parts)
 
-        quality_filter = (
-            "("
-            "    (title?~='audio|lyric|альбом|album') |"
-            "    (channel?~=' - Topic$')"
-            ") & "
-            "!title?~='live|short|концерт|выступление|official video|music video|full show|interview|parody|влог|vlog|топ 10|top 10|top 25|greatest moments|playlist|mix|сборник|best of'"
-        )
+        # --- Python-based Quality Filter ---
+        def is_high_quality(e: Dict[str, Any]) -> bool:
+            title = e.get('title', '').lower()
+            channel = e.get('channel', '').lower()
+            
+            is_good_title = any(kw in title for kw in ['audio', 'lyric', 'альбом', 'album'])
+            is_topic_channel = channel.endswith(' - topic')
+            is_bad_title = any(kw in title for kw in [
+                'live', 'short', 'концерт', 'выступление', 'official video', 
+                'music video', 'full show', 'interview', 'parody', 'влог', 
+                'vlog', 'топ 10', 'mix', 'сборник', 'playlist'
+            ])
+            
+            return (is_good_title or is_topic_channel) and not is_bad_title
 
+        def is_valid_video_entry(e: Dict[str, Any]) -> bool:
+            """Проверяет, что ID похож на ID видео, а не канала."""
+            entry_id = e.get('id')
+            return entry_id and len(entry_id) == 11
+
+        # --- Попытка 1: строгий поиск ---
         logger.debug(f"[SmartSearch] Попытка 1: строгий поиск с запросом '{smart_query}'")
         ydl_opts_strict = self._get_ydl_options(
-            is_search=True, 
-            match_filter=quality_filter,
+            is_search=True,
             min_duration=min_duration,
             max_duration=max_duration,
         )
@@ -163,30 +173,33 @@ class YouTubeDownloader(BaseDownloader):
         try:
             info = await self._extract_info(f"ytsearch5:{smart_query}", ydl_opts_strict)
             if info and info.get("entries"):
-                for entry in info["entries"]:
-                    categories = entry.get("categories", [])
-                    if isinstance(categories, list) and "Music" in categories:
-                        logger.info(f"[SmartSearch] Успех (строгий поиск)! Найден музыкальный трек: {entry['title']}")
-                        return TrackInfo(
-                            title=entry["title"],
-                            artist=entry.get("channel", entry.get("uploader", "Unknown")),
-                            duration=int(entry.get("duration", 0)),
-                            source=Source.YOUTUBE.value,
-                            identifier=entry["id"],
-                        )
+                entries = info["entries"]
                 
-                best_entry = info["entries"][0]
-                logger.info(f"[SmartSearch] Музыкальных треков не найдено, беру первый результат: {best_entry['title']}")
-                return TrackInfo(
-                    title=best_entry["title"],
-                    artist=best_entry.get("channel", best_entry.get("uploader", "Unknown")),
-                    duration=int(best_entry.get("duration", 0)),
-                    source=Source.YOUTUBE.value,
-                    identifier=best_entry["id"],
-                )
+                # Применяем фильтры в Python
+                valid_entries = [e for e in entries if is_valid_video_entry(e)]
+                high_quality_entries = [e for e in valid_entries if is_high_quality(e)]
+
+                # Сначала ищем в музыкальной категории качественных треков
+                music_entries = [e for e in high_quality_entries if isinstance(e.get("categories"), list) and "Music" in e.get("categories", [])]
+                if music_entries:
+                    entry = music_entries[0]
+                    logger.info(f"[SmartSearch] Успех (строгий поиск, high quality, music)! Найден: {entry['title']}")
+                    return TrackInfo(
+                        title=entry["title"], artist=entry.get("channel", entry.get("uploader", "Unknown")),
+                        duration=int(entry.get("duration", 0)), source=Source.YOUTUBE.value, identifier=entry["id"])
+
+                # Если не нашли, ищем любой качественный
+                if high_quality_entries:
+                    entry = high_quality_entries[0]
+                    logger.info(f"[SmartSearch] Успех (строгий поиск, high quality)! Найден: {entry['title']}")
+                    return TrackInfo(
+                        title=entry["title"], artist=entry.get("channel", entry.get("uploader", "Unknown")),
+                        duration=int(entry.get("duration", 0)), source=Source.YOUTUBE.value, identifier=entry["id"])
+
         except Exception as e:
             logger.warning(f"[SmartSearch] Ошибка на этапе строгого поиска: {e}")
 
+        # --- Попытка 2: обычный поиск ---
         logger.info("[SmartSearch] Строгий поиск не дал результатов, перехожу к обычному поиску.")
         ydl_opts_fallback = self._get_ydl_options(
             is_search=True,
@@ -196,27 +209,29 @@ class YouTubeDownloader(BaseDownloader):
         try:
             info = await self._extract_info(f"ytsearch1:{query}", ydl_opts_fallback)
             if info and info.get("entries"):
-                for entry in info["entries"]:
-                    categories = entry.get("categories", [])
-                    if isinstance(categories, list) and "Music" in categories:
-                        logger.info(f"[SmartSearch] Успех (обычный поиск)! Найден музыкальный трек: {entry['title']}")
-                        return TrackInfo(
-                            title=entry["title"],
-                            artist=entry.get("channel", entry.get("uploader", "Unknown")),
-                            duration=int(entry.get("duration", 0)),
-                            source=Source.YOUTUBE.value,
-                            identifier=entry["id"],
-                        )
+                # Применяем только фильтр на валидность видео
+                valid_entries = [e for e in info["entries"] if is_valid_video_entry(e)]
+                
+                if not valid_entries:
+                    logger.warning(f"[SmartSearch] Обычный поиск по запросу '{query}' не дал валидных видео.")
+                    return None
 
-                best_entry = info["entries"][0]
-                logger.info(f"[SmartSearch] Музыкальных треков не найдено (обычный поиск), беру первый результат: {best_entry['title']}")
+                # Ищем музыкальные треки
+                music_entries = [e for e in valid_entries if isinstance(e.get("categories"), list) and "Music" in e.get("categories", [])]
+                if music_entries:
+                    entry = music_entries[0]
+                    logger.info(f"[SmartSearch] Успех (обычный поиск, music)! Найден: {entry['title']}")
+                    return TrackInfo(
+                        title=entry["title"], artist=entry.get("channel", entry.get("uploader", "Unknown")),
+                        duration=int(entry.get("duration", 0)), source=Source.YOUTUBE.value, identifier=entry["id"])
+
+                # Берем просто первое валидное видео
+                entry = valid_entries[0]
+                logger.info(f"[SmartSearch] Музыкальных треков не найдено (обычный поиск), беру первый результат: {entry['title']}")
                 return TrackInfo(
-                    title=best_entry["title"],
-                    artist=best_entry.get("channel", best_entry.get("uploader", "Unknown")),
-                    duration=int(best_entry.get("duration", 0)),
-                    source=Source.YOUTUBE.value,
-                    identifier=best_entry["id"],
-                )
+                    title=entry["title"], artist=entry.get("channel", entry.get("uploader", "Unknown")),
+                    duration=int(entry.get("duration", 0)), source=Source.YOUTUBE.value, identifier=entry["id"])
+        
         except Exception as e:
             logger.error(f"[SmartSearch] Ошибка на этапе обычного поиска: {e}")
             return None
@@ -317,16 +332,25 @@ class YouTubeDownloader(BaseDownloader):
             # --- НОВАЯ ЛОГИКА ФИЛЬТРАЦИИ В PYTHON ---
             BANNED_WORDS = [
                 'ai cover', 'suno', 'udio', 'ai version', 'karaoke', 'караоке',
-                'ии кавер', 'сгенерировано ии', 'ai generated'
+                'ии кавер', 'сгенерировано ии', 'ai generated', '24/7', 'live radio'
             ]
             
             filtered_entries = []
             for e in entries:
                 if not (e and e.get("title")):
                     continue
+                
+                # Явная проверка на флаг is_live
+                if e.get('is_live') is True:
+                    logger.warning(f"Пропущен LIVE трек (по флагу is_live): {e.get('title')}")
+                    continue
+
                 title_lower = e.get("title", "").lower()
-                if not any(banned in title_lower for banned in BANNED_WORDS):
-                    filtered_entries.append(e)
+                if any(banned in title_lower for banned in BANNED_WORDS):
+                    logger.warning(f"Пропущен трек по стоп-слову '{[b for b in BANNED_WORDS if b in title_lower][0]}': {e.get('title')}")
+                    continue
+                
+                filtered_entries.append(e)
             
             if not filtered_entries and entries:
                 logger.warning(
