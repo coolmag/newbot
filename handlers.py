@@ -56,7 +56,12 @@ class PlayHandler(BaseHandler):
         search_msg = await update.message.reply_text(f"🔍 Ищу: `{query}`...", parse_mode=ParseMode.MARKDOWN)
         
         try:
-            tracks = await self._downloader.search(query, limit=10)
+            tracks = await self._downloader.search(
+                query,
+                limit=10,
+                min_duration=self._settings.PLAY_MIN_DURATION_S,
+                max_duration=self._settings.PLAY_MAX_DURATION_S
+            )
         except Exception as e:
             logger.error(f"Ошибка при поиске треков: {e}", exc_info=True)
             await search_msg.edit_text("❌ Произошла ошибка при поиске.")
