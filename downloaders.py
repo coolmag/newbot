@@ -263,7 +263,15 @@ class YouTubeDownloader(BaseDownloader):
             ydl_opts_download = self._get_ydl_options(is_search=False)
             ydl_opts_download["max_filesize"] = self._settings.PLAY_MAX_FILE_SIZE_MB * 1024 * 1024
 
-            info = await self._extract_info(track_identifier, ydl_opts_download)
+            try:
+                # Добавляем таймаут, чтобы не зависать на стримах
+                info = await asyncio.wait_for(
+                    self._extract_info(track_identifier, ydl_opts_download),
+                    timeout=30.0
+                )
+            except asyncio.TimeoutError:
+                logger.error(f"Таймаут при получении информации о треке {track_identifier}. Вероятно, это стрим.")
+                return DownloadResult(success=False, error="Таймаут получения информации о видео.")
             
             track_info = TrackInfo(
                 title=info.get("title", "Unknown"),
