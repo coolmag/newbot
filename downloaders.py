@@ -99,15 +99,14 @@ class YouTubeDownloader(BaseDownloader):
             
             # Базовый фильтр для исключения AI-контента и прочего нежелательного
             BANNED_WORDS = [
-                'AI', 'AI.cover', 'Suno', 'Udio', 'AI.version', 'AI.generated',
-                'ИИ.кавер', 'сгенерировано.ИИ', 'караоке', 'karaoke'
+                'AI cover', 'Suno', 'Udio', 'AI version', 'karaoke', 'караоке',
+                'ИИ кавер', 'сгенерировано ИИ', 'AI generated'
             ]
-            banned_regex = '|'.join(re.escape(word) for word in BANNED_WORDS)
-            # Фильтр для yt-dlp. Оператор !~? делает его нечувствительным к регистру.
-            # Оборачиваем в кавычки, чтобы обработать возможные спецсимволы.
-            base_filter = f'title !~? "({banned_regex})"'
+            # Генерируем список простых фильтров. !contains? - не содержит (без учета регистра)
+            # Каждое слово в кавычках для yt-dlp
+            base_filters = [f'title !contains? "{word}"' for word in BANNED_WORDS]
 
-            filters = [base_filter]
+            filters = base_filters
             if match_filter:
                 filters.append(match_filter)
             if min_duration is not None:
