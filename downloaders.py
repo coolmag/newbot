@@ -113,7 +113,7 @@ class YouTubeDownloader(BaseDownloader):
             options["postprocessors"] = [
                 {"key": "FFmpegExtractAudio", "preferredcodec": "mp3"}
             ]
-            options["outtmpl"] = str(self._settings.DOWNLOADS_DIR / "% (id)s.%(ext)s")
+            options["outtmpl"] = str(self._settings.DOWNLOADS_DIR / "%(id)s.%(ext)s")
             if self._settings.COOKIES_FILE and self._settings.COOKIES_FILE.exists():
                 options["cookiefile"] = str(self._settings.COOKIES_FILE)
         return options
@@ -286,11 +286,19 @@ class YouTubeDownloader(BaseDownloader):
                 logger.warning(err_msg)
                 return DownloadResult(success=False, error=err_msg)
 
-            loop = asyncio.get_running_loop()
-            await loop.run_in_executor(
-                None,
-                lambda: yt_dlp.YoutubeDL(ydl_opts_download).download([track_identifier]),
-            )
+            try:
+                loop = asyncio.get_running_loop()
+                # Оборачиваем сам процесс скачивания в таймаут
+                await asyncio.wait_for(
+                    loop.run_in_executor(
+                        None,
+                        lambda: yt_dlp.YoutubeDL(ydl_opts_download).download([track_identifier]),
+                    ),
+                    timeout=self._settings.DOWNLOAD_TIMEOUT_S
+                )
+            except asyncio.TimeoutError:
+                logger.error(f"Полный таймаут скачивания трека {track_identifier}. Процесс yt-dlp 'завис'.")
+                return DownloadResult(success=False, error="Таймаут скачивания видео (процесс занял слишком много времени).")
 
             mp3_file = next(
                 iter(glob.glob(str(self._settings.DOWNLOADS_DIR / f"{track_identifier}.mp3"))),
@@ -337,13 +345,13 @@ class YouTubeDownloader(BaseDownloader):
             
             entries = info.get("entries", []) or []
 
-            # --- НОВАЯ ЛОГИКА ФИЛЬТРАЦИИ В PYTHON ---
+            # --- Усиленная и строгая фильтрация в Python ---
             BANNED_WORDS = [
                 'ai cover', 'suno', 'udio', 'ai version', 'karaoke', 'караоке',
                 'ии кавер', 'сгенерировано ии', 'ai generated', '24/7', 'live radio'
             ]
             
-            filtered_entries = []
+            final_entries = []
             for e in entries:
                 if not (e and e.get("title")):
                     continue
@@ -353,21 +361,14 @@ class YouTubeDownloader(BaseDownloader):
                     logger.warning(f"Пропущен LIVE трек (по флагу is_live): {e.get('title')}")
                     continue
 
+                # Проверка по стоп-словам в названии
                 title_lower = e.get("title", "").lower()
                 if any(banned in title_lower for banned in BANNED_WORDS):
                     logger.warning(f"Пропущен трек по стоп-слову '{[b for b in BANNED_WORDS if b in title_lower][0]}': {e.get('title')}")
                     continue
                 
-                filtered_entries.append(e)
+                final_entries.append(e)
             
-            if not filtered_entries and entries:
-                logger.warning(
-                    f"[YouTube Search] Фильтрация по стоп-словам удалила все результаты для '{query}'. "
-                    f"Продолжаю с исходным списком, чтобы не оставить пользователя ни с чем."
-                )
-                final_entries = entries
-            else:
-                final_entries = filtered_entries
             # --- КОНЕЦ НОВОЙ ЛОГИКИ ---
 
             # Сначала отфильтровываем по категории "Music"
@@ -496,7 +497,7 @@ class InternetArchiveDownloader(BaseDownloader):
                 metadata = await response.json()
 
             mp3_file = next(
-                (f for f in metadata.get("files", []) if f.get("format", "").startswith("VBR MP3")),
+                (f for f in metadata.get("files", []) if f.get("format", "").startswith("VBR MP3")), 
                 None
             )
             if not mp3_file:
