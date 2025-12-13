@@ -104,8 +104,13 @@ class YouTubeDownloader(BaseDownloader):
             ]
             # Формируем regex, который ищет любое из этих слов как отдельные слова
             # (используя \b - границы слова)
-            banned_regex = '|'.join(fr'\b{re.escape(word)}\b' for word in BANNED_WORDS)
-            base_filter = f"title !~= '{banned_regex}'"
+            # Формируем regex, который ищет любое из этих слов как отдельные слова.
+            # Используем raw-string и одинарные кавычки для надежности.
+            # Пробелы в словах заменяем на точку, чтобы фильтр yt-dlp их "съел".
+            banned_regex = '|'.join(
+                fr'\b{re.escape(word.replace(" ", "."))}\b' for word in BANNED_WORDS
+            )
+            base_filter = f"title !~? '{banned_regex}'" # !~? - case-insensitive
 
             filters = [base_filter]
             if match_filter:

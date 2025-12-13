@@ -105,14 +105,21 @@ class Settings(BaseSettings):
     ]
 
     RADIO_MOODS: Dict[str, List[str]] = {
-        "энергичное": ["pop", "house", "hardstyle", "drum and bass", "hip-hop", "rock", "эстрада 80-90х"],
-        "спокойное": ["ambient", "lofi hip-hop", "chillwave", "jazz", "classical", "downtempo"],
-        "веселое": ["disco", "funk", "pop", "tropical house", "latin", "эстрада"],
-        "грустное": ["blues", "indie rock", "alternative rock", "русские романсы"],
-        "фокус": ["ambient", "lofi hip-hop", "minimal techno"],
-        "драйв": ["hard rock", "metal", "phonk", "techno", "trance"],
-        "ностальгия": ["synthwave", "retrowave", "classic rock", "советская эстрада", "эстрада 80-90х"],
-        "русское": ["русская поп-музыка", "русский рок", "русский рэп", "шансон", "бардовская песня", "советская эстрада"]
+        # Новые "зумерские" настроения
+        "чилл": ["lofi hip-hop", "chillwave", "downtempo", "ambient", "trip-hop", "bedroom pop"],
+        "вайб": ["soul", "r&b", "neo-soul", "jazz-funk", "deep house", "bedroom pop"],
+        "движ": ["hip-hop", "drill", "phonk", "trap", "hardstyle", "drum and bass", "k-pop"],
+        "грув": ["funk", "disco", "soul groove", "rare groove", "jazz-funk"],
+        
+        # Обновленные старые
+        "энергия": ["pop", "house", "edm", "progressive house", "hard rock", "эстрада 80-90х"],
+        "грусть": ["blues", "indie rock", "alternative rock", "emo", "post-punk", "русские романсы"],
+        "фокус": ["ambient", "minimal techno", "lofi hip-hop", "soundtrack"],
+        "драйв": ["hard rock", "metal", "phonk", "techno", "trance", "punk rock"],
+        "ностальгия": ["synthwave", "retrowave", "classic rock", "советская эстрада", "new wave"],
+        
+        # Специальные
+        "русское": ["русская поп-музыка", "русский рок", "русский рэп", "кальянный рэп", "советский джаз", "советская эстрада"]
     }
 
     # --- Настройки кэша ---

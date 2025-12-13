@@ -35,6 +35,7 @@ class RadioService:
         self._skip_event = asyncio.Event()
         self.error_count = 0
         self._status_message_info: Optional[Tuple[int, int]] = None
+        self._progress_task: Optional[asyncio.Task] = None
         
         # --- Состояние плейлиста ---
         self._playlist: list[TrackInfo] = []
@@ -89,7 +90,7 @@ class RadioService:
         self._played_ids = set()
 
         if self.current_mood or self.winning_genre != "rock" or self.artist_mode:
-            self.mode_end_time = datetime.now() + timedelta(hours=1)
+            self.mode_end_time = datetime.now() + timedelta(minutes=30)
         else:
             self.mode_end_time = None
 
@@ -110,6 +111,10 @@ class RadioService:
         if self._vote_task:
             self._vote_task.cancel()
             self._vote_task = None
+        
+        if self._progress_task:
+            self._progress_task.cancel()
+            self._progress_task = None
         
         if self.current_vote_message_info:
             try:
@@ -140,7 +145,7 @@ class RadioService:
         self.winning_genre = genre
         self.artist_mode = None
         self.current_mood = None
-        self.mode_end_time = datetime.now() + timedelta(hours=1)
+        self.mode_end_time = datetime.now() + timedelta(minutes=30)
         self._playlist = []
 
         if self._vote_task:
@@ -176,7 +181,7 @@ class RadioService:
         self.artist_mode = artist
         self.winning_genre = None
         self.current_mood = None
-        self.mode_end_time = datetime.now() + timedelta(hours=1)
+        self.mode_end_time = datetime.now() + timedelta(minutes=30)
         self._playlist = []
         logger.info(f"[Режим] Включен режим артиста: {artist} на 1 час.")
         
@@ -191,7 +196,7 @@ class RadioService:
         self.current_mood = mood
         self.artist_mode = None
         self.winning_genre = None
-        self.mode_end_time = datetime.now() + timedelta(hours=1)
+        self.mode_end_time = datetime.now() + timedelta(minutes=30)
         self._playlist = []
         
         await self._bot.send_message(
@@ -234,7 +239,7 @@ class RadioService:
             self._vote_in_progress = False
             return
 
-        await asyncio.sleep(300)  # 5 минут на голосование
+        await asyncio.sleep(180)  # 3 минуты на голосование
         if self._vote_in_progress:
             await self.end_genre_vote(chat_id)
 
@@ -288,7 +293,7 @@ class RadioService:
         else:
             self.winning_genre = random.choice(self._current_vote_genres)
         
-        self.mode_end_time = datetime.now() + timedelta(hours=1)
+        self.mode_end_time = datetime.now() + timedelta(minutes=30)
         self._playlist = []
         
         announcement = f"🎉 **Голосование завершено!**\n\nСледующий час играет: **{self.winning_genre.capitalize()}**"
@@ -313,64 +318,115 @@ class RadioService:
 
     # --- Внутренний цикл радио ---
     
-    async def _update_status_message(self, text: str, reply_markup: InlineKeyboardMarkup = None):
+    async def _update_status_message(self, text: str, reply_markup: Optional[InlineKeyboardMarkup] = None):
+        """Безопасно обновляет статус-сообщение, обрабатывая его возможное удаление."""
         if not self._status_message_info:
+            logger.debug("Нет информации о статус-сообщении для обновления.")
             return
-        
+
         chat_id, message_id = self._status_message_info
         try:
             await self._bot.edit_message_text(
-                chat_id=chat_id, message_id=message_id,
-                text=text, parse_mode=ParseMode.MARKDOWN, reply_markup=reply_markup
+                chat_id=chat_id,
+                message_id=message_id,
+                text=text,
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=reply_markup,
             )
         except TelegramError as e:
-            if "not modified" not in str(e):
-                logger.warning(f"Не удалось обновить статус-сообщение: {e}")
+            # Если сообщение не найдено, оно было удалено. Сбрасываем его ID.
+            if "Message to edit not found" in str(e):
+                logger.warning(
+                    "Не удалось найти статус-сообщение для обновления. "
+                    "Вероятно, оно было удалено. Сбрасываю ID."
+                )
+                self._status_message_info = None
+            # Игнорируем ошибку, если сообщение не было изменено
+            elif "message is not modified" not in str(e).lower():
+                logger.error(f"Не удалось обновить статус-сообщение: {e}")
 
     async def _get_next_query(self) -> str:
+        """Генерирует более разнообразные поисковые запросы."""
         if self.artist_mode:
-            return self.artist_mode
-        
+            # Для режима артиста можно добавить вариативности
+            return random.choice([
+                self.artist_mode,
+                f"{self.artist_mode} songs",
+                f"{self.artist_mode} playlist",
+                f"best of {self.artist_mode}",
+            ])
+
+        base_genre = "rock"
         if self.current_mood:
             genres_for_mood = self._settings.RADIO_MOODS.get(self.current_mood, ["music"])
-            selected_genre = random.choice(genres_for_mood)
-        else:
-            selected_genre = self.winning_genre or "rock"
+            base_genre = random.choice(genres_for_mood)
+        elif self.winning_genre:
+            base_genre = self.winning_genre
 
+        # Шаблоны и модификаторы для разнообразия
         query_templates = [
-            f"{selected_genre} official audio",
-            f"best of {selected_genre}",
-            f"{selected_genre} music",
+            "{genre}",
+            "{genre} music",
+            "best {genre} mix",
+            "relaxing {genre} playlist",
+            "{genre} hits",
+            "deep {genre}",
         ]
-        return random.choice(query_templates)
+        year_modifiers = ["", f"{random.randint(2010, 2024)}", "90s", "80s"]
+        
+        template = random.choice(query_templates)
+        query = template.format(genre=base_genre)
+        
+        # С шансом 30% добавляем модификатор
+        if random.random() < 0.3:
+            modifier = random.choice(year_modifiers)
+            if modifier:
+                query = f"{query} {modifier}"
+                
+        logger.debug(f"Сгенерирован новый поисковый запрос для радио: '{query}'")
+        return query
 
     async def _fetch_playlist(self, query: str):
+        """Ищет и добавляет треки в плейлист с несколькими уровнями отката (fallback)."""
         logger.info(f"[Радио] Ищу треки по запросу: '{query}'")
         
+        # Попытка 1: Строгие фильтры
         new_tracks = await self._downloader.search(
-            query, 
-            limit=100,
+            query,
+            limit=50,
             min_duration=self._settings.RADIO_MIN_DURATION_S,
             max_duration=self._settings.RADIO_MAX_DURATION_S,
             min_views=self._settings.RADIO_MIN_VIEWS,
             min_likes=self._settings.RADIO_MIN_LIKES,
         )
         
-        if not new_tracks and (self._settings.RADIO_MIN_VIEWS or self._settings.RADIO_MIN_LIKES):
-            logger.warning(f"[Радио] Поиск '{query}' с фильтрами не дал результатов. Пробую без них.")
+        # Попытка 2: Без фильтров по популярности
+        if not new_tracks:
+            logger.warning(f"[Радио] Поиск '{query}' с фильтрами популярности не дал результатов. Пробую без них.")
             new_tracks = await self._downloader.search(
-                query, limit=100, 
+                query, 
+                limit=50, 
                 min_duration=self._settings.RADIO_MIN_DURATION_S,
                 max_duration=self._settings.RADIO_MAX_DURATION_S
             )
+            
+        # Попытка 3: Самый мягкий поиск (только ограничение по длине)
+        if not new_tracks:
+            logger.warning(f"[Радио] Поиск '{query}' со стандартными фильтрами не дал результатов. Пробую самый мягкий поиск.")
+            new_tracks = await self._downloader.search(
+                query,
+                limit=20,
+                max_duration=self._settings.RADIO_MAX_DURATION_S # Оставляем только макс. длину
+            )
 
         if new_tracks:
+            # Фильтруем дубликаты и добавляем в плейлист
             unique_tracks = [track for track in new_tracks if track.identifier not in self._played_ids]
             random.shuffle(unique_tracks)
             self._playlist.extend(unique_tracks)
             logger.info(f"[Радио] Добавлено {len(unique_tracks)} уник. треков. Всего в плейлисте: {len(self._playlist)}")
         else:
-            logger.warning(f"[Радио] Не удалось получить плейлист для запроса '{query}'.")
+            logger.error(f"[Радио] Не удалось получить плейлист для запроса '{query}' после всех попыток.")
             self.error_count += 1
 
     async def _send_audio(self, chat_id: int, result: DownloadResult):
@@ -393,12 +449,60 @@ class RadioService:
             except OSError as e:
                 logger.error(f"Не удалось удалить файл {result.file_path}: {e}")
 
+    async def _progress_updater(
+        self,
+        base_text: str,
+        track_duration: int,
+        radio_play_duration: int = 90,
+    ):
+        """Отдельная задача для обновления прогресс-бара на сообщении плеера."""
+        if not self._status_message_info:
+            return
+
+        chat_id, message_id = self._status_message_info
+        update_interval = 15  # Обновляем каждые 15 секунд
+        bar_length = 18
+
+        try:
+            for elapsed_time in range(0, radio_play_duration + 1, update_interval):
+                progress_percent = elapsed_time / radio_play_duration
+                filled_len = int(bar_length * progress_percent)
+                bar = '●' * filled_len + '─' * (bar_length - filled_len)
+
+                elapsed_str = f"{elapsed_time // 60:02d}:{elapsed_time % 60:02d}"
+                duration_str = f"{radio_play_duration // 60:02d}:{radio_play_duration % 60:02d}"
+
+                # Собираем финальный текст
+                status_text = (
+                    f"{base_text}\n\n"
+                    f"`[{bar}] {elapsed_str} / {duration_str}`"
+                )
+                
+                await self._bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    text=status_text,
+                    parse_mode=ParseMode.MARKDOWN,
+                )
+                await asyncio.sleep(update_interval)
+
+        except TelegramError as e:
+            if "Message to edit not found" in str(e):
+                logger.warning("Прогресс-бар: не удалось найти сообщение, оно было удалено.")
+                self._status_message_info = None # Сбрасываем ID
+            elif "message is not modified" not in str(e).lower():
+                logger.warning(f"Прогресс-бар: ошибка обновления сообщения: {e}")
+        except asyncio.CancelledError:
+            logger.debug("Задача обновления прогресс-бара отменена.")
+        except Exception as e:
+            logger.error(f"Непредвиденная ошибка в обновлении прогресс-бара: {e}", exc_info=True)
+
     async def _radio_loop(self, chat_id: int):
         while self._is_on and self.error_count < 10:
             try:
                 if not self._vote_in_progress and (self.mode_end_time is None or datetime.now() >= self.mode_end_time):
                     self.start_genre_vote(chat_id)
-                    self.mode_end_time = datetime.now() + timedelta(hours=1)
+                    self.mode_end_time = datetime.now() + timedelta(minutes=30)
                 
                 if len(self._playlist) < 5:
                     query = await self._get_next_query()
@@ -424,20 +528,37 @@ class RadioService:
                 if result.success:
                     self.error_count = 0
                     
-                    mode_text = ""
-                    if self.artist_mode:
-                        mode_text = f"🎤 Артист: {self.artist_mode}"
-                    elif self.current_mood:
-                        mode_text = f"😊 Настроение: {self.current_mood.capitalize()}"
-                    else:
-                        genre_text = self.winning_genre or "rock"
-                        mode_text = f"🎶 Жанр: {genre_text.capitalize()}"
+                    if self._progress_task:
+                        self._progress_task.cancel()
 
-                    status_text = (
-                        f"📻 **Сейчас в эфире | {mode_text}**\n\n"
-                        f"`{result.track_info.display_name}`"
+                    # --- Формируем основной текст плеера ---
+                    mode_icon = "🎤" if self.artist_mode else "😊" if self.current_mood else "🎶"
+                    mode_name = self.artist_mode or (self.current_mood.capitalize() if self.current_mood else (self.winning_genre or 'rock').capitalize())
+                    mode_line = f"{mode_icon} **Режим:** `{mode_name}`"
+
+                    base_status_text = (
+                        f"📻 **Groove AI Radio**\n"
+                        f"{mode_line}\n\n"
+                        f"🎧 **Трек:** `{result.track_info.title}`\n"
+                        f"👤 **Исполнитель:** `{result.track_info.artist}`\n"
+                        f"⏳ **Длительность:** `{result.track_info.format_duration()}`"
                     )
-                    await self._update_status_message(status_text)
+                    
+                    # Устанавливаем начальное состояние плеера
+                    initial_player_text = (
+                        f"{base_status_text}\n\n"
+                        f"`[──────────────────] 00:00 / 01:30`"
+                    )
+                    await self._update_status_message(initial_player_text)
+
+                    # Запускаем задачу обновления прогресс-бара
+                    self._progress_task = asyncio.create_task(
+                        self._progress_updater(
+                            base_text=base_status_text,
+                            track_duration=result.track_info.duration,
+                        )
+                    )
+
                     await self._send_audio(chat_id, result)
                     
                     try:
