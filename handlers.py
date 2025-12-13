@@ -77,7 +77,9 @@ class PlayHandler(BaseHandler):
                 )
             )
         
-        reply_markup = InlineKeyboardMarkup.from_row(keyboard)
+        # Разделяем кнопки на ряды по 5 штук
+        buttons_in_rows = [keyboard[i:i + 5] for i in range(0, len(keyboard), 5)]
+        reply_markup = InlineKeyboardMarkup(buttons_in_rows)
         await search_msg.edit_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
 
 
