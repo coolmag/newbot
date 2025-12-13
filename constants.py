@@ -43,6 +43,7 @@ class ConversationState(Enum):
 class TrackCallback:
     """Префиксы и действия для колбэков управления треком."""
     PREFIX = "track:"
+    PLAY = "play"
     LIKE = "like"
     DISLIKE = "dislike"
     ADD_TO_PLAYLIST = "add_to_playlist"

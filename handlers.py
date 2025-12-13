@@ -54,32 +54,31 @@ class PlayHandler(BaseHandler):
             return
 
         search_msg = await update.message.reply_text(f"🔍 Ищу: `{query}`...", parse_mode=ParseMode.MARKDOWN)
-        result = await self._downloader.download_with_retry(query)
+        
+        try:
+            tracks = await self._downloader.search(query, limit=10)
+        except Exception as e:
+            logger.error(f"Ошибка при поиске треков: {e}", exc_info=True)
+            await search_msg.edit_text("❌ Произошла ошибка при поиске.")
+            return
 
-        if result.success:
-            try:
-                is_in_favs = await self._cache.is_in_favorites(update.effective_user.id, result.track_info.identifier)
-                likes, dislikes = await self._cache.get_ratings(result.track_info.identifier)
-                
-                caption = (
-                    f"✅ `{result.track_info.display_name}`\n\n"
-                    f"❤️ {likes}  💔 {dislikes}"
+        if not tracks:
+            await search_msg.edit_text(f"❌ Ничего не найдено по запросу: `{query}`")
+            return
+
+        keyboard = []
+        text = "**Вот что я нашел. Выберите трек:**\n\n"
+        for i, track in enumerate(tracks, 1):
+            text += f"{i}. `{track.display_name}` ({track.format_duration()})\n"
+            keyboard.append(
+                InlineKeyboardButton(
+                    text=str(i),
+                    callback_data=f"{TrackCallback.PREFIX}{TrackCallback.PLAY}:{track.identifier}"
                 )
-                
-                with open(result.file_path, "rb") as audio:
-                    await context.bot.send_audio(
-                        chat_id=update.effective_chat.id, audio=audio,
-                        title=result.track_info.title, performer=result.track_info.artist,
-                        duration=result.track_info.duration, caption=caption,
-                        parse_mode=ParseMode.MARKDOWN, 
-                        reply_markup=get_track_control_keyboard(result.track_info.identifier, is_in_favs),
-                    )
-                await search_msg.delete()
-            except Exception as e:
-                logger.error(f"Ошибка при отправке файла: {e}", exc_info=True)
-                await search_msg.edit_text("❌ Ошибка при отправке файла.")
-        else:
-            await search_msg.edit_text(f"❌ Не удалось найти `{query}`. {result.error}")
+            )
+        
+        reply_markup = InlineKeyboardMarkup.from_row(keyboard)
+        await search_msg.edit_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
 
 
 class DedicateHandler(BaseHandler):
@@ -333,6 +332,37 @@ class TrackCallbackHandler(BaseHandler):
                 await query.answer("🗑️ Трек удален.")
             else:
                 await query.answer("Ошибка: неверный формат колбэка.", show_alert=True)
+            return
+
+        if action == TrackCallback.PLAY:
+            await query.answer("✅ Начинаю скачивание...")
+            await query.edit_message_text(f"⏳ Скачиваю выбранный трек...", reply_markup=None)
+            
+            result = await self._downloader.download_with_retry(track_id)
+            if result.success:
+                try:
+                    is_in_favs = await self._cache.is_in_favorites(user_id, result.track_info.identifier)
+                    likes, dislikes = await self._cache.get_ratings(result.track_info.identifier)
+                    caption = (f"✅ `{result.track_info.display_name}`\n\n❤️ {likes}  💔 {dislikes}")
+                    
+                    with open(result.file_path, "rb") as audio:
+                        await context.bot.send_audio(
+                            chat_id=query.message.chat_id, audio=audio,
+                            title=result.track_info.title, performer=result.track_info.artist,
+                            duration=result.track_info.duration, caption=caption,
+                            parse_mode=ParseMode.MARKDOWN, 
+                            reply_markup=get_track_control_keyboard(result.track_info.identifier, is_in_favs),
+                        )
+                    await query.message.delete()
+                except Exception as e:
+                    logger.error(f"Ошибка при отправке файла: {e}", exc_info=True)
+                    try:
+                        await query.edit_message_text("❌ Ошибка при отправке файла.")
+                    except Exception: pass
+            else:
+                try:
+                    await query.edit_message_text(f"❌ Не удалось скачать: {result.error}")
+                except Exception: pass
             return
 
         if action == TrackCallback.DELETE:
