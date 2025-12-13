@@ -34,6 +34,7 @@ class RadioService:
         self._is_on = False
         self._skip_event = asyncio.Event()
         self.error_count = 0
+        self._fetch_failure_count = 0
         
         # --- Состояние плейлиста ---
         self._playlist: list[TrackInfo] = []
@@ -73,6 +74,7 @@ class RadioService:
         self.error_count = 0
         self._playlist = []
         self._played_ids = set()
+        self._fetch_failure_count = 0
 
         if self.current_mood or self.winning_genre != "rock" or self.artist_mode:
             self.mode_end_time = datetime.now() + timedelta(minutes=30)
@@ -119,6 +121,7 @@ class RadioService:
         self.current_mood = None
         self.mode_end_time = datetime.now() + timedelta(minutes=30)
         self._playlist = []
+        self._fetch_failure_count = 0
 
         if self._vote_task:
             self._vote_task.cancel()
@@ -154,6 +157,7 @@ class RadioService:
         self.current_mood = None
         self.mode_end_time = datetime.now() + timedelta(minutes=30)
         self._playlist = []
+        self._fetch_failure_count = 0
         logger.info(f"[Режим] Включен режим артиста: {artist} на 1 час.")
         
         await self.skip()
@@ -168,6 +172,7 @@ class RadioService:
         self.winning_genre = None
         self.mode_end_time = datetime.now() + timedelta(minutes=30)
         self._playlist = []
+        self._fetch_failure_count = 0
         
         await self._bot.send_message(
             chat_id,
@@ -264,6 +269,7 @@ class RadioService:
         
         self.mode_end_time = datetime.now() + timedelta(minutes=30)
         self._playlist = []
+        self._fetch_failure_count = 0
         
         announcement = f"🎉 **Голосование завершено!**\n\nСледующий час играет: **{self.winning_genre.capitalize()}**"
         logger.info(f"[Режим] По результатам голосования установлен жанр: {self.winning_genre}")
@@ -327,8 +333,11 @@ class RadioService:
         logger.debug(f"Сгенерирован новый поисковый запрос для радио: '{query}'")
         return query
 
-    async def _fetch_playlist(self, query: str):
-        """Ищет и добавляет треки в плейлист с несколькими уровнями отката (fallback)."""
+    async def _fetch_playlist(self, query: str) -> bool:
+        """
+        Ищет и добавляет треки в плейлист.
+        Возвращает True, если треки были добавлены, иначе False.
+        """
         logger.info(f"[Радио] Ищу треки по запросу: '{query}'")
         
         # Попытка 1: Строгие фильтры
@@ -361,14 +370,17 @@ class RadioService:
             )
 
         if new_tracks:
-            # Фильтруем дубликаты и добавляем в плейлист
             unique_tracks = [track for track in new_tracks if track.identifier not in self._played_ids]
+            if not unique_tracks:
+                return False
+                
             random.shuffle(unique_tracks)
             self._playlist.extend(unique_tracks)
             logger.info(f"[Радио] Добавлено {len(unique_tracks)} уник. треков. Всего в плейлисте: {len(self._playlist)}")
+            return True
         else:
             logger.error(f"[Радио] Не удалось получить плейлист для запроса '{query}' после всех попыток.")
-            self.error_count += 1
+            return False
 
     async def _send_audio(self, chat_id: int, result: DownloadResult, caption: str):
         if not result.file_path or not os.path.exists(result.file_path):
@@ -399,40 +411,62 @@ class RadioService:
     async def _radio_loop(self, chat_id: int):
         while self._is_on and self.error_count < 10:
             try:
+                # --- Управление голосованием и режимами ---
                 if not self._vote_in_progress and (self.mode_end_time is None or datetime.now() >= self.mode_end_time):
                     self.start_genre_vote(chat_id)
                     self.mode_end_time = datetime.now() + timedelta(minutes=30)
                 
+                # --- Логика наполнения плейлиста ---
                 if len(self._playlist) < 5:
                     query = await self._get_next_query()
-                    await self._fetch_playlist(query)
+                    success = await self._fetch_playlist(query)
+                    if not success:
+                        self._fetch_failure_count += 1
+                    else:
+                        self._fetch_failure_count = 0 # Сбрасываем при успехе
                 
+                # --- Логика смены жанра при неудачах ---
+                if self._fetch_failure_count >= 3:
+                    logger.warning(f"[Радио] Не удалось найти треки для жанра '{self.winning_genre}' 3 раза подряд. Меняю жанр.")
+                    await self._bot.send_message(chat_id, f"😕 Не могу найти музыку по жанру «{self.winning_genre}». Попробую что-нибудь другое...")
+
+                    old_genre = self.winning_genre
+                    new_genre = random.choice(self._settings.RADIO_GENRES)
+                    while new_genre == old_genre:
+                        new_genre = random.choice(self._settings.RADIO_GENRES)
+                    
+                    self.winning_genre = new_genre
+                    self.artist_mode = None
+                    self.current_mood = None
+                    self._fetch_failure_count = 0  # Сбрасываем счетчик
+                    
+                    logger.info(f"[Радио] Жанр автоматически изменен на '{self.winning_genre}'.")
+                    await self._bot.send_message(chat_id, f"✅ Радио переключилось на жанр: **{self.winning_genre.capitalize()}**", parse_mode=ParseMode.MARKDOWN)
+                    continue # Перезапускаем цикл, чтобы сразу искать по новому жанру
+
+                # --- Проигрывание трека ---
                 if not self._playlist:
                     logger.info("Плейлист пуст, ищу новую музыку...")
                     await asyncio.sleep(self._settings.RETRY_DELAY_S)
                     continue
                 
-                track_to_play_index = random.randint(0, len(self._playlist) - 1)
-                track_to_play = self._playlist.pop(track_to_play_index)
+                track_to_play = self._playlist.pop(random.randint(0, len(self._playlist) - 1))
                 if track_to_play.identifier in self._played_ids:
                     continue 
                 
                 self._played_ids.add(track_to_play.identifier)
                 if len(self._played_ids) > 500:
-                    # Удаляем самый старый ID, чтобы множество не росло бесконечно
-                    self._played_ids.discard(next(iter(self._played_ids)))
+                    self._played_ids.discard(next(iter(self._played_ids), None))
 
                 download_msg = await self._bot.send_message(chat_id, f"⏳ Скачиваю: `{track_to_play.display_name}`")
                 result = await self._downloader.download_with_retry(track_to_play.identifier)
 
+                # --- Обработка результата скачивания ---
                 if result.success:
                     self.error_count = 0
-                    
-                    # --- Формируем подпись к треку ---
                     mode_icon = "🎤" if self.artist_mode else "😊" if self.current_mood else "🎶"
                     mode_name = self.artist_mode or (self.current_mood.capitalize() if self.current_mood else (self.winning_genre or 'rock').capitalize())
                     mode_line = f"{mode_icon} **Режим:** `{mode_name}`"
-
                     caption_text = (
                         f"📻 **Groove AI Radio**\n"
                         f"{mode_line}\n\n"
@@ -440,15 +474,12 @@ class RadioService:
                         f"👤 **Исполнитель:** `{result.track_info.artist}`\n"
                         f"⏳ **Длительность:** `{result.track_info.format_duration()}`"
                     )
-                    
                     await self._send_audio(chat_id, result, caption=caption_text)
-                    
                     try:
-                        # Удаляем сообщение "Скачиваю..."
                         await self._bot.delete_message(chat_id, download_msg.message_id)
                     except TelegramError:
-                        pass # Ничего страшного, если не удалось
-
+                        pass
+                    
                     try:
                         await asyncio.wait_for(self._skip_event.wait(), timeout=90)
                         self._skip_event.clear()
