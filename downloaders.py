@@ -351,6 +351,10 @@ class YouTubeDownloader(BaseDownloader):
 
             results = []
             for e in music_entries:
+                if e.get('is_live'):
+                    logger.debug(f"[YouTube Search Debug] Пропущен трек '{e.get('title')}' - это прямая трансляция.")
+                    continue
+
                 if not (e and e.get("id") and e.get("title")):
                     logger.debug(f"[YouTube Search Debug] Пропущен трек (без названия или ID): {e}")
                     continue
