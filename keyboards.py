@@ -10,7 +10,7 @@ def get_main_menu_keyboard(is_admin: bool = False) -> InlineKeyboardMarkup:
     Возвращает главное меню бота с основными действиями.
     """
     keyboard = [
-        [InlineKeyboardButton("🎵 Заказать трек", callback_data=MenuCallback.PLAY_TRACK)],
+        [InlineKeyboardButton("🎵 Поиск трека", callback_data=MenuCallback.PLAY_TRACK)],
         [InlineKeyboardButton("😊 Выбрать настроение", callback_data=MenuCallback.CHOOSE_MOOD)],
         [InlineKeyboardButton("🗳️ Голосовать за жанр", callback_data=MenuCallback.VOTE_FOR_GENRE)]
     ]
