@@ -97,16 +97,7 @@ class YouTubeDownloader(BaseDownloader):
         if is_search:
             options["extract_flat"] = True
             
-            # Базовый фильтр для исключения AI-контента и прочего нежелательного
-            BANNED_WORDS = [
-                'AI cover', 'Suno', 'Udio', 'AI version', 'karaoke', 'караоке',
-                'ИИ кавер', 'сгенерировано ИИ', 'AI generated'
-            ]
-            # Генерируем список простых фильтров. !contains? - не содержит (без учета регистра)
-            # Каждое слово в кавычках для yt-dlp
-            base_filters = [f'title !contains? "{word}"' for word in BANNED_WORDS]
-
-            filters = base_filters
+            filters = []
             if match_filter:
                 filters.append(match_filter)
             if min_duration is not None:
@@ -322,17 +313,41 @@ class YouTubeDownloader(BaseDownloader):
                 return []
             
             entries = info.get("entries", []) or []
+
+            # --- НОВАЯ ЛОГИКА ФИЛЬТРАЦИИ В PYTHON ---
+            BANNED_WORDS = [
+                'ai cover', 'suno', 'udio', 'ai version', 'karaoke', 'караоке',
+                'ии кавер', 'сгенерировано ии', 'ai generated'
+            ]
             
+            filtered_entries = []
+            for e in entries:
+                if not (e and e.get("title")):
+                    continue
+                title_lower = e.get("title", "").lower()
+                if not any(banned in title_lower for banned in BANNED_WORDS):
+                    filtered_entries.append(e)
+            
+            if not filtered_entries and entries:
+                logger.warning(
+                    f"[YouTube Search] Фильтрация по стоп-словам удалила все результаты для '{query}'. "
+                    f"Продолжаю с исходным списком, чтобы не оставить пользователя ни с чем."
+                )
+                final_entries = entries
+            else:
+                final_entries = filtered_entries
+            # --- КОНЕЦ НОВОЙ ЛОГИКИ ---
+
             # Сначала отфильтровываем по категории "Music"
             music_entries = [
-                e for e in entries 
+                e for e in final_entries 
                 if e and isinstance(e.get("categories"), list) and "Music" in e.get("categories", [])
             ]
             
             # Если после фильтрации ничего не осталось, используем оригинальный список
             if not music_entries:
                 logger.warning(f"[YouTube Search] Не найдено треков с категорией 'Music' для запроса '{query}'. Использую все результаты.")
-                music_entries = entries
+                music_entries = final_entries
 
             results = []
             for e in music_entries:
