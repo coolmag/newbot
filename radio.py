@@ -429,7 +429,7 @@ class RadioService:
             logger.error(f"[Радио] Не удалось получить плейлист для запроса '{query}' после всех попыток.")
             self.error_count += 1
 
-    async def _send_audio(self, chat_id: int, result: DownloadResult):
+    async def _send_audio(self, chat_id: int, result: DownloadResult, reply_to_message_id: Optional[int] = None):
         if not result.file_path or not os.path.exists(result.file_path):
             logger.error(f"[Радио] Файл для отправки не найден: {result.file_path}")
             return
@@ -437,9 +437,13 @@ class RadioService:
         try:
             with open(result.file_path, "rb") as audio_file:
                 await self._bot.send_audio(
-                    chat_id=chat_id, audio=audio_file, title=result.track_info.title,
-                    performer=result.track_info.artist, duration=result.track_info.duration,
+                    chat_id=chat_id,
+                    audio=audio_file,
+                    title=result.track_info.title,
+                    performer=result.track_info.artist,
+                    duration=result.track_info.duration,
                     reply_markup=get_track_control_keyboard(result.track_info.identifier),
+                    reply_to_message_id=reply_to_message_id,
                 )
         except TelegramError as e:
             logger.error(f"Ошибка Telegram при отправке радио-аудио: {e}")
@@ -559,7 +563,8 @@ class RadioService:
                         )
                     )
 
-                    await self._send_audio(chat_id, result)
+                    player_message_id = self._status_message_info[1] if self._status_message_info else None
+                    await self._send_audio(chat_id, result, reply_to_message_id=player_message_id)
                     
                     try:
                         await asyncio.wait_for(self._skip_event.wait(), timeout=90)
