@@ -34,8 +34,6 @@ class RadioService:
         self._is_on = False
         self._skip_event = asyncio.Event()
         self.error_count = 0
-        self._status_message_info: Optional[Tuple[int, int]] = None
-        self._progress_task: Optional[asyncio.Task] = None
         
         # --- Состояние плейлиста ---
         self._playlist: list[TrackInfo] = []
@@ -66,21 +64,8 @@ class RadioService:
     # --- Управление радио ---
 
     async def start(self, chat_id: int):
-        """Запускает фоновую задачу радио и создает/закрепляет статус-сообщение."""
+        """Запускает фоновую задачу радио."""
         if self._task and not self._task.done():
-            return
-
-        # Отправляем и закрепляем статус-сообщение
-        try:
-            status_message = await self._bot.send_message(
-                chat_id, "🎵 Радио запускается... Ожидание первого трека..."
-            )
-            await self._bot.pin_chat_message(
-                chat_id, status_message.message_id, disable_notification=True
-            )
-            self._status_message_info = (chat_id, status_message.message_id)
-        except TelegramError as e:
-            logger.error(f"Не удалось отправить или закрепить статус-сообщение: {e}")
             return
 
         self._is_on = True
@@ -98,7 +83,7 @@ class RadioService:
         logger.info(f"✅ Радио-задача создана и запущена для чата {chat_id}.")
 
     async def stop(self):
-        """Останавливает радио и открепляет статус-сообщение."""
+        """Останавливает радио."""
         self._is_on = False
         if self._task:
             self._task.cancel()
@@ -112,10 +97,6 @@ class RadioService:
             self._vote_task.cancel()
             self._vote_task = None
         
-        if self._progress_task:
-            self._progress_task.cancel()
-            self._progress_task = None
-        
         if self.current_vote_message_info:
             try:
                 await self._bot.delete_message(self.current_vote_message_info[0], self.current_vote_message_info[1])
@@ -123,15 +104,6 @@ class RadioService:
                 pass
             self.current_vote_message_info = None
 
-        if self._status_message_info:
-            chat_id, message_id = self._status_message_info
-            try:
-                await self._bot.unpin_chat_message(chat_id, message_id)
-                await self._update_status_message("⏹️ Радио остановлено.")
-            except TelegramError as e:
-                logger.warning(f"Не удалось открепить или обновить статус-сообщение: {e}")
-        
-        self._status_message_info = None
         logger.info("⏹️ Радио остановлено.")
 
     async def skip(self):
@@ -173,7 +145,6 @@ class RadioService:
             f"✅ Жанр принудительно изменен на **{genre.capitalize()}**. Этот жанр будет играть следующий час.",
             parse_mode=ParseMode.MARKDOWN,
         )
-        await self._update_status_message(f"🎶 Режим Радио: **{genre.capitalize()}**")
         logger.info(f"[Режим] Админ установил жанр: {genre} на 1 час.")
         await self.skip()
 
@@ -185,7 +156,6 @@ class RadioService:
         self._playlist = []
         logger.info(f"[Режим] Включен режим артиста: {artist} на 1 час.")
         
-        await self._update_status_message(f"🎤 Режим Артиста: **{artist}**")
         await self.skip()
 
     async def set_mood(self, mood: str, chat_id: int):
@@ -205,7 +175,6 @@ class RadioService:
             f"Следующий час бот будет подбирать музыку под это настроение!",
             parse_mode=ParseMode.MARKDOWN,
         )
-        await self._update_status_message(f"😊 Режим Настроения: **{mood.capitalize()}**")
         logger.info(f"[Режим] Установлено настроение: {mood} на 1 час.")
         await self.skip()
 
@@ -313,37 +282,9 @@ class RadioService:
         self._vote_in_progress = False
         self._vote_task = None
 
-        await self._update_status_message(f"🎶 Режим Радио: **{self.winning_genre.capitalize()}**")
         await self.skip()
 
     # --- Внутренний цикл радио ---
-    
-    async def _update_status_message(self, text: str, reply_markup: Optional[InlineKeyboardMarkup] = None):
-        """Безопасно обновляет статус-сообщение, обрабатывая его возможное удаление."""
-        if not self._status_message_info:
-            logger.debug("Нет информации о статус-сообщении для обновления.")
-            return
-
-        chat_id, message_id = self._status_message_info
-        try:
-            await self._bot.edit_message_text(
-                chat_id=chat_id,
-                message_id=message_id,
-                text=text,
-                parse_mode=ParseMode.MARKDOWN,
-                reply_markup=reply_markup,
-            )
-        except TelegramError as e:
-            # Если сообщение не найдено, оно было удалено. Сбрасываем его ID.
-            if "Message to edit not found" in str(e):
-                logger.warning(
-                    "Не удалось найти статус-сообщение для обновления. "
-                    "Вероятно, оно было удалено. Сбрасываю ID."
-                )
-                self._status_message_info = None
-            # Игнорируем ошибку, если сообщение не было изменено
-            elif "message is not modified" not in str(e).lower():
-                logger.error(f"Не удалось обновить статус-сообщение: {e}")
 
     async def _get_next_query(self) -> str:
         """Генерирует более разнообразные поисковые запросы."""
@@ -429,7 +370,7 @@ class RadioService:
             logger.error(f"[Радио] Не удалось получить плейлист для запроса '{query}' после всех попыток.")
             self.error_count += 1
 
-    async def _send_audio(self, chat_id: int, result: DownloadResult, reply_to_message_id: Optional[int] = None):
+    async def _send_audio(self, chat_id: int, result: DownloadResult, caption: str):
         if not result.file_path or not os.path.exists(result.file_path):
             logger.error(f"[Радио] Файл для отправки не найден: {result.file_path}")
             return
@@ -439,11 +380,13 @@ class RadioService:
                 await self._bot.send_audio(
                     chat_id=chat_id,
                     audio=audio_file,
+                    caption=caption,
+                    parse_mode=ParseMode.MARKDOWN,
+                    # Передаем метаданные для корректного отображения плеера в клиенте
                     title=result.track_info.title,
                     performer=result.track_info.artist,
                     duration=result.track_info.duration,
                     reply_markup=get_track_control_keyboard(result.track_info.identifier),
-                    reply_to_message_id=reply_to_message_id,
                 )
         except TelegramError as e:
             logger.error(f"Ошибка Telegram при отправке радио-аудио: {e}")
@@ -452,54 +395,6 @@ class RadioService:
                 os.remove(result.file_path)
             except OSError as e:
                 logger.error(f"Не удалось удалить файл {result.file_path}: {e}")
-
-    async def _progress_updater(
-        self,
-        base_text: str,
-        track_duration: int,
-        radio_play_duration: int = 90,
-    ):
-        """Отдельная задача для обновления прогресс-бара на сообщении плеера."""
-        if not self._status_message_info:
-            return
-
-        chat_id, message_id = self._status_message_info
-        update_interval = 15  # Обновляем каждые 15 секунд
-        bar_length = 18
-
-        try:
-            for elapsed_time in range(0, radio_play_duration + 1, update_interval):
-                progress_percent = elapsed_time / radio_play_duration
-                filled_len = int(bar_length * progress_percent)
-                bar = '●' * filled_len + '─' * (bar_length - filled_len)
-
-                elapsed_str = f"{elapsed_time // 60:02d}:{elapsed_time % 60:02d}"
-                duration_str = f"{radio_play_duration // 60:02d}:{radio_play_duration % 60:02d}"
-
-                # Собираем финальный текст
-                status_text = (
-                    f"{base_text}\n\n"
-                    f"`[{bar}] {elapsed_str} / {duration_str}`"
-                )
-                
-                await self._bot.edit_message_text(
-                    chat_id=chat_id,
-                    message_id=message_id,
-                    text=status_text,
-                    parse_mode=ParseMode.MARKDOWN,
-                )
-                await asyncio.sleep(update_interval)
-
-        except TelegramError as e:
-            if "Message to edit not found" in str(e):
-                logger.warning("Прогресс-бар: не удалось найти сообщение, оно было удалено.")
-                self._status_message_info = None # Сбрасываем ID
-            elif "message is not modified" not in str(e).lower():
-                logger.warning(f"Прогресс-бар: ошибка обновления сообщения: {e}")
-        except asyncio.CancelledError:
-            logger.debug("Задача обновления прогресс-бара отменена.")
-        except Exception as e:
-            logger.error(f"Непредвиденная ошибка в обновлении прогресс-бара: {e}", exc_info=True)
 
     async def _radio_loop(self, chat_id: int):
         while self._is_on and self.error_count < 10:
@@ -513,7 +408,7 @@ class RadioService:
                     await self._fetch_playlist(query)
                 
                 if not self._playlist:
-                    await self._update_status_message("📻 Плейлист пуст, ищу новую музыку...")
+                    logger.info("Плейлист пуст, ищу новую музыку...")
                     await asyncio.sleep(self._settings.RETRY_DELAY_S)
                     continue
                 
@@ -524,23 +419,21 @@ class RadioService:
                 
                 self._played_ids.add(track_to_play.identifier)
                 if len(self._played_ids) > 500:
-                    self._played_ids.pop()
+                    # Удаляем самый старый ID, чтобы множество не росло бесконечно
+                    self._played_ids.discard(next(iter(self._played_ids)))
 
-                await self._update_status_message(f"⏳ Скачиваю: `{track_to_play.display_name}`")
+                download_msg = await self._bot.send_message(chat_id, f"⏳ Скачиваю: `{track_to_play.display_name}`")
                 result = await self._downloader.download_with_retry(track_to_play.identifier)
 
                 if result.success:
                     self.error_count = 0
                     
-                    if self._progress_task:
-                        self._progress_task.cancel()
-
-                    # --- Формируем основной текст плеера ---
+                    # --- Формируем подпись к треку ---
                     mode_icon = "🎤" if self.artist_mode else "😊" if self.current_mood else "🎶"
                     mode_name = self.artist_mode or (self.current_mood.capitalize() if self.current_mood else (self.winning_genre or 'rock').capitalize())
                     mode_line = f"{mode_icon} **Режим:** `{mode_name}`"
 
-                    base_status_text = (
+                    caption_text = (
                         f"📻 **Groove AI Radio**\n"
                         f"{mode_line}\n\n"
                         f"🎧 **Трек:** `{result.track_info.title}`\n"
@@ -548,25 +441,14 @@ class RadioService:
                         f"⏳ **Длительность:** `{result.track_info.format_duration()}`"
                     )
                     
-                    # Устанавливаем начальное состояние плеера
-                    initial_player_text = (
-                        f"{base_status_text}\n\n"
-                        f"`[──────────────────] 00:00 / 01:30`"
-                    )
-                    await self._update_status_message(initial_player_text)
-
-                    # Запускаем задачу обновления прогресс-бара
-                    self._progress_task = asyncio.create_task(
-                        self._progress_updater(
-                            base_text=base_status_text,
-                            track_duration=result.track_info.duration,
-                        )
-                    )
-
-                    player_message_id = self._status_message_info[1] if self._status_message_info else None
-                    logger.debug(f"[Радио] Отправляю аудио, reply_to_message_id: {player_message_id}")
-                    await self._send_audio(chat_id, result, reply_to_message_id=player_message_id)
+                    await self._send_audio(chat_id, result, caption=caption_text)
                     
+                    try:
+                        # Удаляем сообщение "Скачиваю..."
+                        await self._bot.delete_message(chat_id, download_msg.message_id)
+                    except TelegramError:
+                        pass # Ничего страшного, если не удалось
+
                     try:
                         await asyncio.wait_for(self._skip_event.wait(), timeout=90)
                         self._skip_event.clear()
@@ -576,8 +458,12 @@ class RadioService:
                 else:
                     logger.warning(f"[Радио] Ошибка скачивания: {result.error}")
                     self.error_count += 1
-                    await self._update_status_message(f"⚠️ Ошибка скачивания, пробую следующий трек...")
-                    await asyncio.sleep(3)
+                    try:
+                        await download_msg.edit_text(f"⚠️ Ошибка скачивания, пробую следующий трек...")
+                        await asyncio.sleep(3)
+                        await download_msg.delete()
+                    except TelegramError:
+                        pass
 
             except asyncio.CancelledError:
                 logger.info("[Радио] Цикл остановлен.")
@@ -589,17 +475,6 @@ class RadioService:
 
         if self.error_count >= 10:
             logger.error("[Радио] Превышено макс. кол-во ошибок. Радио остановлено.")
-            await self._update_status_message("⚠️ Радио было остановлено из-за большого количества ошибок.")
-        
-        elif not self._is_on:
-             await self._update_status_message("⏹️ Радио остановлено.")
-
-        if self._status_message_info:
-            try:
-                await self._bot.unpin_chat_message(self._status_message_info[0])
-            except TelegramError as e:
-                logger.warning(f"Не удалось открепить сообщение в конце сессии: {e}")
         
         self._is_on = False
-        self._status_message_info = None
         logger.info(f"⏹️ Радио-цикл завершен для чата {chat_id}.")
