@@ -564,6 +564,7 @@ class RadioService:
                     )
 
                     player_message_id = self._status_message_info[1] if self._status_message_info else None
+                    logger.debug(f"[Радио] Отправляю аудио, reply_to_message_id: {player_message_id}")
                     await self._send_audio(chat_id, result, reply_to_message_id=player_message_id)
                     
                     try:
